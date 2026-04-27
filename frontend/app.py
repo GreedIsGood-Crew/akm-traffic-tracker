@@ -21,7 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 
-from clickhouse_connect import get_client
+# # # # # from clickhouse_connect import get_client  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only
 from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
 
 import uuid
@@ -42,19 +42,14 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     app.state.pg = await asyncpg.create_pool(
-        user="user",
-        password="password_password_password",
-        database="db",
-        host="tracker_postgres",
+        user=os.environ.get("DB_USER", "user"),
+        password=os.environ.get("DB_PASSWORD", "password"),
+        database=os.environ.get("DB_NAME", "db"),
+        host=os.environ.get("DB_HOST", "localhost"),
         port=5432
     )
-    app.state.ch = get_client(
-        host='tracker_clickhouse',
-        port=8123,
-        username='user',
-        password='password_password_password',
-        database='default'
-    )
+    # app.state.ch = None  # DISABLED: Postgres-only
+    app.state.ch = None
 
 
 # 🛑 Shutdown
@@ -203,6 +198,17 @@ async def get_default_campaign_from_db(domain: str):
         return None
 
 
+
+# ── 1x1 transparent GIF pixel (no-flow fallback) ──
+import base64 as _b64
+_TRANSPARENT_GIF = _b64.b64decode(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+)
+
+def render_pixel_response() -> Response:
+    """Return 1x1 transparent GIF — used when click is saved but no flows configured."""
+    return Response(content=_TRANSPARENT_GIF, status_code=200, media_type="image/gif")
+
 def render_404_html() -> Response:
     path = Path("static/404.html")
     if path.exists():
@@ -339,7 +345,7 @@ async def postback_receive(click_id: str, status: str, payout: str, request: Req
             # log_track(f'postbacks row {click_id}')
             # log_track(row)
             if row and row["config"]:
-                config = json.loads(row["config"])
+                config = json.loads(row["config"]) if row["config"] and row["config"] != "null" else {} if row["config"] and row["config"] != "null" else {}
                 # cycle of postbacks
                 postbacks = config.get("postbacks", [])
                 # log_track('postbacks')
@@ -463,8 +469,8 @@ def check_filters(meta: dict, filters: list, request: Request) -> bool:
 
 
 def get_params_id_mapping_from_campaign(campaign: dict) -> list:
-    config_str = campaign.get("config")
-    if not config_str:
+    config_str = campaign.get("config") if hasattr(campaign, 'get') else campaign["config"]
+    if not config_str or config_str == 'null':
         return []
 
     try:
@@ -477,7 +483,7 @@ def get_params_id_mapping_from_campaign(campaign: dict) -> list:
 async def do_campaign_execution(campaign, request: Request) -> Response:
     log_track(f"🔁 New campaign execution call for '{campaign}'")
 
-    config = json.loads(campaign["config"])
+    config = json.loads(campaign["config"]) if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {}
     flows = config.get("flows", [])
     # log_track(flows)
 
@@ -589,8 +595,8 @@ async def do_campaign_execution(campaign, request: Request) -> Response:
         elif schema == "return_404":
             return render_404_html()
 
-    # Default fallback
-    return render_404_html()
+    # Default fallback — click already saved, return tracking pixel
+    return render_pixel_response()
 
 
 async def get_offer_click_url(campaign_alias: str, offer_id: str, landing_id: str = None,
@@ -640,7 +646,7 @@ async def track_event(campaign, request: Request):
         log_track(msg)
         raise HTTPException(status_code=400, detail=msg)
 
-    ch = request.app.state.ch
+    # # # # # ch = request.app.state.ch  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only  # DISABLED: Postgres-only
 
     content_type = request.headers.get('content-type', '')
     if content_type.startswith('application/x-www-form-urlencoded'):
@@ -651,7 +657,7 @@ async def track_event(campaign, request: Request):
         except:
             query = {}
 
-    config = json.loads(campaign["config"])
+    config = json.loads(campaign["config"]) if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {} if campaign["config"] and campaign["config"] != "null" else {}
 
     # Извлекаем mapping из config.paramsIdMapping
     mapping = {}
@@ -662,7 +668,7 @@ async def track_event(campaign, request: Request):
 
     # Стартовая запись
     result_row = {
-        "campaign_id": str(campaign["id"])
+        "campaign_id": campaign["id"]
     }
 
     # Добавляем обогащённые поля
@@ -685,7 +691,9 @@ async def track_event(campaign, request: Request):
         columns = list(result_row.keys())
         values = [list(result_row.values())]
         # ch.insert("clicks_data", values, column_names=columns)
-        await asyncio.to_thread(ch.insert, "clicks_data", values, column_names=columns)
+        # ClickHouse disabled — save click to Postgres (conversions_data)
+        result_row['click_id'] = result_row.get('click_id') or str(uuid.uuid4())
+        await save_click_to_db(result_row)
         # log_track(f"✅ Inserted into ClickHouse: {campaign_alias}")
     except Exception as e:
         log_track(f"❌ ClickHouse insert failed: {str(e)}")

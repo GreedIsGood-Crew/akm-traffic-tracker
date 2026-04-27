@@ -21,7 +21,7 @@ app.state = SimpleNamespace()
 
 @app.on_event("startup")
 async def startup():
-    app.state.ch = get_clickhouse_client()
+    app.state.ch = None  # DISABLED: Postgres-only (using PG stub)
 
 # app = FastAPI() # for production
 
@@ -99,8 +99,7 @@ async def serve_page(request: Request, page: Optional[str] = None):
     if page not in ALLOWED_PAGES or not user_type:
         page = "auth"  # Или можно вернуть 404
     page_file = f"pages/{page}.html"
-    return templates.TemplateResponse("index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "index.html", {
         "page_to_include": page_file,
         "page": page,
         "THEME_NAME": THEME_NAME,
