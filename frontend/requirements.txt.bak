@@ -3,6 +3,7 @@ uvicorn
 psycopg2-binary
 sqlalchemy
 python-multipart
+clickhouse_connect
 httpagentparser
 asyncpg
 user_agents

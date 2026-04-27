@@ -844,6 +844,42 @@
                             <v-chip small color="grey" v-else>{{ item.status }}</v-chip>
                         </template>
 
+                        <template v-slot:item.clicks="{ item }">
+                            {{ item.clicks.toLocaleString() }}
+                        </template>
+
+                        <template v-slot:item.unique_clicks="{ item }">
+                            {{ item.unique_clicks.toLocaleString() }}
+                        </template>
+
+                        <template v-slot:item.conversions="{ item }">
+                            {{ item.conversions.toLocaleString() }}
+                        </template>
+
+                        <template v-slot:item.revenue="{ item }">
+                            <span class="green--text">${{ item.revenue.toFixed(2) }}</span>
+                        </template>
+
+                        <template v-slot:item.cost="{ item }">
+                            <span class="red--text">${{ item.cost.toFixed(2) }}</span>
+                        </template>
+
+                        <template v-slot:item.profit="{ item }">
+                            <span :class="item.profit >= 0 ? 'green--text' : 'red--text'">
+                                ${{ item.profit.toFixed(2) }}
+                            </span>
+                        </template>
+
+                        <template v-slot:item.roi="{ item }">
+                            <span :class="item.roi >= 0 ? 'green--text' : 'red--text'">
+                                {{ item.roi.toFixed(1) }}%
+                            </span>
+                        </template>
+
+                        <template v-slot:item.cr="{ item }">
+                            {{ item.cr.toFixed(2) }}%
+                        </template>
+
                         <template v-slot:item.redirect_mode="{ item }">
                             <v-chip small outlined>{{ item.redirect_mode }}</v-chip>
                         </template>
@@ -892,11 +928,15 @@
                     {text: 'Alias', value: 'alias'},
                     {text: 'Link', value: 'link'}, // value 'link' is domain+'/'+alias
                     {text: 'Type', value: 'type'},
-                    {text: 'Flow Mode', value: 'redirect_mode'},
                     {text: 'Status', value: 'status'},
-                    {text: 'Notes', value: 'notes'},
-                    {text: 'Created', value: 'created_at'},
-                    {text: 'Updated', value: 'updated_at'},
+                    {text: 'Clicks', value: 'clicks'},
+                    {text: 'Unique', value: 'unique_clicks'},
+                    {text: 'Conv', value: 'conversions'},
+                    {text: 'Revenue', value: 'revenue'},
+                    {text: 'Cost', value: 'cost'},
+                    {text: 'Profit', value: 'profit'},
+                    {text: 'ROI %', value: 'roi'},
+                    {text: 'CR %', value: 'cr'},
                     {text: 'Actions', value: 'actions', sortable: false}
                 ],
 

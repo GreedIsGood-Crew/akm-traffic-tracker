@@ -145,7 +145,7 @@ def list_landings(db: Session = Depends(get_db)):
             "folder": landing.folder,
             "name": landing.name,
             "link": landing.link,
-            "type": landing.type.value if hasattr(landing.type, "value") else landing.type,  # ENUM support
+            "type": landing.type.value if landing.type and hasattr(landing.type, "value") else (landing.type or "link"),  # ENUM support
             "tags": landing.tags.split(",") if landing.tags else [],
             "created_at": landing.created_at,
             "clicks": 0,  # пока мокаем

@@ -97,7 +97,80 @@
                 </v-card>
             </v-col>
         </v-row>
-        <v-row>
+
+        <!-- Top Campaigns & Offers -->
+        <v-row class="mt-4">
+            <v-col cols="6">
+                <v-card>
+                    <v-card-title>Top 10 Campaigns</v-card-title>
+                    <v-data-table
+                            :headers="topCampaignsHeaders"
+                            :items="topCampaigns"
+                            :items-per-page="10"
+                            dense
+                            class="elevation-1"
+                    >
+                        <template v-slot:item.revenue="{ item }">
+                            <span class="green--text">${{ item.revenue.toFixed(2) }}</span>
+                        </template>
+                        <template v-slot:item.profit="{ item }">
+                            <span :class="item.profit >= 0 ? 'green--text' : 'red--text'">
+                                ${{ item.profit.toFixed(2) }}
+                            </span>
+                        </template>
+                    </v-data-table>
+                </v-card>
+            </v-col>
+            <v-col cols="6">
+                <v-card>
+                    <v-card-title>Top 10 Offers</v-card-title>
+                    <v-data-table
+                            :headers="topOffersHeaders"
+                            :items="topOffers"
+                            :items-per-page="10"
+                            dense
+                            class="elevation-1"
+                    >
+                        <template v-slot:item.revenue="{ item }">
+                            <span class="green--text">${{ item.revenue.toFixed(2) }}</span>
+                        </template>
+                        <template v-slot:item.profit="{ item }">
+                            <span :class="item.profit >= 0 ? 'green--text' : 'red--text'">
+                                ${{ item.profit.toFixed(2) }}
+                            </span>
+                        </template>
+                    </v-data-table>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Country Distribution -->
+        <v-row class="mt-4">
+            <v-col cols="6">
+                <v-card>
+                    <v-card-title>Clicks by Country</v-card-title>
+                    <apexchart
+                            height="350"
+                            type="pie"
+                            :options="countryPieChart.chartOptions"
+                            :series="countryPieChart.series"
+                    ></apexchart>
+                </v-card>
+            </v-col>
+            <v-col cols="6">
+                <v-card>
+                    <v-card-title>Revenue by Country</v-card-title>
+                    <apexchart
+                            height="350"
+                            type="donut"
+                            :options="countryRevenueChart.chartOptions"
+                            :series="countryRevenueChart.series"
+                    ></apexchart>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <v-row class="mt-4">
             <v-col cols="8">
                 <v-card>
                     <v-data-table
@@ -228,6 +301,85 @@
                     {text: 'Time', value: 'received_at'},
                 ],
                 visits: [],
+                topCampaigns: [],
+                topOffers: [],
+                countryStats: [],
+                topCampaignsHeaders: [
+                    {text: 'Name', value: 'name'},
+                    {text: 'Clicks', value: 'clicks'},
+                    {text: 'Conv', value: 'conversions'},
+                    {text: 'Revenue', value: 'revenue'},
+                    {text: 'Profit', value: 'profit'}
+                ],
+                topOffersHeaders: [
+                    {text: 'Name', value: 'name'},
+                    {text: 'Clicks', value: 'clicks'},
+                    {text: 'Conv', value: 'conversions'},
+                    {text: 'Revenue', value: 'revenue'},
+                    {text: 'Profit', value: 'profit'}
+                ],
+                countryPieChart: {
+                    series: [],
+                    chartOptions: {
+                        chart: {
+                            type: 'pie',
+                            background: 'transparent'
+                        },
+                        labels: [],
+                        theme: {
+                            mode: 'dark'
+                        },
+                        legend: {
+                            position: 'bottom'
+                        },
+                        responsive: [{
+                            breakpoint: 480,
+                            options: {
+                                chart: { width: 200 },
+                                legend: { position: 'bottom' }
+                            }
+                        }]
+                    }
+                },
+                countryRevenueChart: {
+                    series: [],
+                    chartOptions: {
+                        chart: {
+                            type: 'donut',
+                            background: 'transparent'
+                        },
+                        labels: [],
+                        theme: {
+                            mode: 'dark'
+                        },
+                        legend: {
+                            position: 'bottom'
+                        },
+                        plotOptions: {
+                            pie: {
+                                donut: {
+                                    labels: {
+                                        show: true,
+                                        total: {
+                                            show: true,
+                                            label: 'Total Revenue',
+                                            formatter: function(w) {
+                                                return '$' + w.globals.seriesTotals.reduce((a, b) => a + b, 0).toFixed(2);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        responsive: [{
+                            breakpoint: 480,
+                            options: {
+                                chart: { width: 200 },
+                                legend: { position: 'bottom' }
+                            }
+                        }]
+                    }
+                }
 
             }
         },
@@ -252,9 +404,54 @@
                             this.campaigns = data;
                         });
                 },
+                loadTopCampaigns() {
+                    const dateFrom = this.filters.date_range[0];
+                    const dateTo = this.filters.date_range[1];
+                    fetch(`/backend/api/dashboard/top-campaigns?date_from=${dateFrom}&date_to=${dateTo}&limit=10`)
+                        .then(res => res.json())
+                        .then(data => {
+                            this.topCampaigns = data;
+                        })
+                        .catch(err => console.error('Error loading top campaigns:', err));
+                },
+                loadTopOffers() {
+                    const dateFrom = this.filters.date_range[0];
+                    const dateTo = this.filters.date_range[1];
+                    fetch(`/backend/api/dashboard/top-offers?date_from=${dateFrom}&date_to=${dateTo}&limit=10`)
+                        .then(res => res.json())
+                        .then(data => {
+                            this.topOffers = data;
+                        })
+                        .catch(err => console.error('Error loading top offers:', err));
+                },
+                loadCountryStats() {
+                    const dateFrom = this.filters.date_range[0];
+                    const dateTo = this.filters.date_range[1];
+                    fetch(`/backend/api/dashboard/stats-by-country?date_from=${dateFrom}&date_to=${dateTo}&limit=10`)
+                        .then(res => res.json())
+                        .then(data => {
+                            this.countryStats = data;
+                            // Update pie chart for clicks
+                            this.countryPieChart.series = data.map(c => c.clicks);
+                            this.countryPieChart.chartOptions = {
+                                ...this.countryPieChart.chartOptions,
+                                labels: data.map(c => c.country)
+                            };
+                            // Update donut chart for revenue
+                            this.countryRevenueChart.series = data.map(c => c.revenue);
+                            this.countryRevenueChart.chartOptions = {
+                                ...this.countryRevenueChart.chartOptions,
+                                labels: data.map(c => c.country)
+                            };
+                        })
+                        .catch(err => console.error('Error loading country stats:', err));
+                },
                 loadData(date) {
                     this.$root.$emit('show-overlay', 'Can take a while, 1+ minute');
                     this.loadFiltersData();
+                    this.loadTopCampaigns();
+                    this.loadTopOffers();
+                    this.loadCountryStats();
 
                     const payload = {
                         campaigns: this.filters.campaigns,

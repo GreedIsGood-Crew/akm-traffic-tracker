@@ -137,6 +137,43 @@
                             {{ Object.keys(item.s2s_postback_statuses).filter(k =>
                             item.s2s_postback_statuses[k]).join(', ') }}
                         </template>
+
+                        <template v-slot:item.clicks="{ item }">
+                            {{ item.clicks.toLocaleString() }}
+                        </template>
+
+                        <template v-slot:item.conversions="{ item }">
+                            {{ item.conversions.toLocaleString() }}
+                        </template>
+
+                        <template v-slot:item.cr="{ item }">
+                            {{ item.cr.toFixed(2) }}%
+                        </template>
+
+                        <template v-slot:item.revenue="{ item }">
+                            <span class="green--text">${{ item.revenue.toFixed(2) }}</span>
+                        </template>
+
+                        <template v-slot:item.cost="{ item }">
+                            <span class="red--text">${{ item.cost.toFixed(2) }}</span>
+                        </template>
+
+                        <template v-slot:item.profit="{ item }">
+                            <span :class="item.profit >= 0 ? 'green--text' : 'red--text'">
+                                ${{ item.profit.toFixed(2) }}
+                            </span>
+                        </template>
+
+                        <template v-slot:item.roi="{ item }">
+                            <span :class="item.roi >= 0 ? 'green--text' : 'red--text'">
+                                {{ item.roi.toFixed(1) }}%
+                            </span>
+                        </template>
+
+                        <template v-slot:item.traffic_loss="{ item }">
+                            {{ item.traffic_loss }}%
+                        </template>
+
                         <template v-slot:item.created_at="{ item }">
                             {{ $formatDate(item.created_at) }}
                         </template>
@@ -178,11 +215,14 @@
                 loadingSources: false,
                 headers: [
                     {text: 'Name', value: 'name'},
+                    {text: 'Clicks', value: 'clicks'},
+                    {text: 'Conv', value: 'conversions'},
+                    {text: 'CR %', value: 'cr'},
+                    {text: 'Revenue', value: 'revenue'},
+                    {text: 'Cost', value: 'cost'},
+                    {text: 'Profit', value: 'profit'},
+                    {text: 'ROI %', value: 'roi'},
                     {text: 'Traffic Loss', value: 'traffic_loss'},
-                    {text: 'Postback', value: 's2s_postback'},
-                    {text: 'Statuses', value: 's2s_postback_statuses'},
-                    {text: 'Created', value: 'created_at'},
-                    {text: 'Updated', value: 'updated_at'},
                     {text: 'Actions', value: 'actions', sortable: false}
                 ],
                 sources: [],

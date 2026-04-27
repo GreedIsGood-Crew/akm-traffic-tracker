@@ -21,7 +21,7 @@ app.state = SimpleNamespace()
 
 @app.on_event("startup")
 async def startup():
-    app.state.ch = None  # DISABLED: Postgres-only (using PG stub)
+    app.state.ch = get_clickhouse_client()
 
 # app = FastAPI() # for production
 
@@ -68,11 +68,9 @@ from app_pages.offers import router as offers_router
 from app_pages.campaigns import router as campaign_router
 from app_pages.dashboard import router as dashboard_router
 from app_pages.reports import router as reports_router  # Импортируем router
-from app_pages.landings import router as landings_router  # Импортируем router
 
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(offers_router, prefix="/api/offers", tags=["Offers"])
-app.include_router(landings_router, prefix="/api/landings", tags=["Landings"])
 
 
 # Подключаем router
@@ -101,7 +99,8 @@ async def serve_page(request: Request, page: Optional[str] = None):
     if page not in ALLOWED_PAGES or not user_type:
         page = "auth"  # Или можно вернуть 404
     page_file = f"pages/{page}.html"
-    return templates.TemplateResponse(request, "index.html", {
+    return templates.TemplateResponse("index.html", {
+        "request": request,
         "page_to_include": page_file,
         "page": page,
         "THEME_NAME": THEME_NAME,

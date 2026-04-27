@@ -21,7 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 
-# from clickhouse_connect import get_client  # DISABLED: Postgres-only
+from clickhouse_connect import get_client
 from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
 
 import uuid
@@ -42,14 +42,19 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     app.state.pg = await asyncpg.create_pool(
-        user=os.environ.get("DB_USER", "user"),
-        password=os.environ.get("DB_PASSWORD", "password"),
-        database=os.environ.get("DB_NAME", "db"),
-        host=os.environ.get("DB_HOST", "localhost"),
+        user="user",
+        password="password_password_password",
+        database="db",
+        host="tracker_postgres",
         port=5432
     )
-    # app.state.ch = None  # DISABLED: Postgres-only
-    app.state.ch = None
+    app.state.ch = get_client(
+        host='tracker_clickhouse',
+        port=8123,
+        username='user',
+        password='password_password_password',
+        database='default'
+    )
 
 
 # 🛑 Shutdown
@@ -69,12 +74,10 @@ VALID_PARAMS = [
 
 from landings import router as landings_router
 from domains import router as domains_router
-from campaigns import router as campaigns_router
 
 # Подключаем router
 app.include_router(landings_router, tags=["Landings"])
 app.include_router(domains_router, tags=["Domains"])
-app.include_router(campaigns_router, tags=["Campaigns"])
 
 ##### main tracker app #####
 
@@ -335,10 +338,8 @@ async def postback_receive(click_id: str, status: str, payout: str, request: Req
 
             # log_track(f'postbacks row {click_id}')
             # log_track(row)
-            if row and row["config"] and row["config"] != "null":
+            if row and row["config"]:
                 config = json.loads(row["config"])
-                if config is None:
-                    config = {}
                 # cycle of postbacks
                 postbacks = config.get("postbacks", [])
                 # log_track('postbacks')
@@ -463,13 +464,11 @@ def check_filters(meta: dict, filters: list, request: Request) -> bool:
 
 def get_params_id_mapping_from_campaign(campaign: dict) -> list:
     config_str = campaign.get("config")
-    if not config_str or config_str == "null":
+    if not config_str:
         return []
 
     try:
         config = json.loads(config_str)
-        if config is None:
-            return []
         return config.get("paramsIdMapping", [])
     except json.JSONDecodeError:
         return []
@@ -478,17 +477,7 @@ def get_params_id_mapping_from_campaign(campaign: dict) -> list:
 async def do_campaign_execution(campaign, request: Request) -> Response:
     log_track(f"🔁 New campaign execution call for '{campaign}'")
 
-    config_raw = campaign.get("config")
-    if config_raw and config_raw != "null" and isinstance(config_raw, str):
-        config = json.loads(config_raw)
-    elif isinstance(config_raw, dict):
-        config = config_raw
-    else:
-        config = {}
-    
-    if config is None:
-        config = {}
-    
+    config = json.loads(campaign["config"])
     flows = config.get("flows", [])
     # log_track(flows)
 
@@ -651,7 +640,7 @@ async def track_event(campaign, request: Request):
         log_track(msg)
         raise HTTPException(status_code=400, detail=msg)
 
-    # ch = request.app.state.ch  # DISABLED: Postgres-only
+    ch = request.app.state.ch
 
     content_type = request.headers.get('content-type', '')
     if content_type.startswith('application/x-www-form-urlencoded'):
@@ -662,16 +651,7 @@ async def track_event(campaign, request: Request):
         except:
             query = {}
 
-    config_raw = campaign.get("config")
-    if config_raw and config_raw != "null" and isinstance(config_raw, str):
-        config = json.loads(config_raw)
-    elif isinstance(config_raw, dict):
-        config = config_raw
-    else:
-        config = {}
-    
-    if config is None:
-        config = {}
+    config = json.loads(campaign["config"])
 
     # Извлекаем mapping из config.paramsIdMapping
     mapping = {}
@@ -682,7 +662,7 @@ async def track_event(campaign, request: Request):
 
     # Стартовая запись
     result_row = {
-        "campaign_id": campaign["id"]  # Keep as int for Postgres
+        "campaign_id": str(campaign["id"])
     }
 
     # Добавляем обогащённые поля
@@ -705,14 +685,11 @@ async def track_event(campaign, request: Request):
         columns = list(result_row.keys())
         values = [list(result_row.values())]
         # ch.insert("clicks_data", values, column_names=columns)
-        # ClickHouse insert disabled - saving to Postgres instead
-        
-        # Generate click_id and save to DB
-        result_row["click_id"] = meta_data.get("click_id") or generate_click_id()
-        await save_click_to_db(result_row)
-        log_track(f"✅ Click saved to Postgres: {campaign_alias}")
+        await asyncio.to_thread(ch.insert, "clicks_data", values, column_names=columns)
+        # log_track(f"✅ Inserted into ClickHouse: {campaign_alias}")
     except Exception as e:
-        log_track(f"❌ Click save failed: {str(e)}")
+        log_track(f"❌ ClickHouse insert failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"ClickHouse error: {e}")
 
 
 async def send_postback(url: str, data: dict, post: bool = False):
