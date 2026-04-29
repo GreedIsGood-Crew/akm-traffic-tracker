@@ -1,0 +1,485 @@
+{% raw %}
+<script type="text/x-template" id="conversions-log-template">
+    <v-container fluid>
+        <v-row align="center" class="mb-4">
+            <v-col>
+                <h2>
+                    <v-icon left>mdi-cash-register</v-icon>
+                    Conversions Log
+                </h2>
+                <div class="text-caption grey--text">
+                    Total: {{ total.toLocaleString() }} conversions
+                </div>
+            </v-col>
+            <v-col cols="auto">
+                <v-btn color="primary" @click="loadData" :loading="loading">
+                    <v-icon left>mdi-refresh</v-icon>
+                    Refresh
+                </v-btn>
+                <v-btn color="success" @click="exportCSV" class="ml-2" outlined>
+                    <v-icon left>mdi-download</v-icon>
+                    Export CSV
+                </v-btn>
+            </v-col>
+        </v-row>
+
+        <!-- Status Summary Cards -->
+        <v-row dense class="mb-4">
+            <v-col cols="6" sm="4" md="2" v-for="(count, status) in statusCounts" :key="status">
+                <v-card 
+                    :color="getStatusColor(status)" 
+                    dark 
+                    class="pa-2 text-center"
+                    @click="filterByStatus(status)"
+                    style="cursor: pointer;"
+                >
+                    <div class="text-uppercase text-caption">{{ status }}</div>
+                    <div class="text-h6 font-weight-bold">{{ count.toLocaleString() }}</div>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Filters Card -->
+        <v-card class="mb-4">
+            <v-card-title class="py-2">
+                <v-icon left small>mdi-filter</v-icon>
+                Filters
+                <v-spacer></v-spacer>
+                <v-btn text small color="primary" @click="clearFilters">
+                    Clear All
+                </v-btn>
+            </v-card-title>
+            <v-card-text>
+                <v-row dense>
+                    <!-- Date Range -->
+                    <v-col cols="12" md="2">
+                        <v-menu
+                            v-model="dateMenu"
+                            :close-on-content-click="false"
+                            transition="scale-transition"
+                            offset-y
+                            min-width="auto"
+                        >
+                            <template v-slot:activator="{ on, attrs }">
+                                <v-text-field
+                                    v-model="dateRangeText"
+                                    label="Date Range"
+                                    prepend-icon="mdi-calendar"
+                                    readonly
+                                    outlined
+                                    dense
+                                    v-bind="attrs"
+                                    v-on="on"
+                                ></v-text-field>
+                            </template>
+                            <v-date-picker
+                                v-model="filters.dateRange"
+                                range
+                                @change="dateMenu = false"
+                            ></v-date-picker>
+                        </v-menu>
+                    </v-col>
+
+                    <!-- Status -->
+                    <v-col cols="12" md="2">
+                        <v-select
+                            v-model="filters.status"
+                            :items="filterOptions.statuses"
+                            label="Status"
+                            prepend-icon="mdi-flag"
+                            outlined
+                            dense
+                            clearable
+                        >
+                            <template v-slot:item="{ item }">
+                                <v-chip :color="getStatusColor(item)" x-small label class="mr-2">
+                                    {{ item }}
+                                </v-chip>
+                                {{ item }}
+                            </template>
+                        </v-select>
+                    </v-col>
+
+                    <!-- Click ID -->
+                    <v-col cols="12" md="2">
+                        <v-text-field
+                            v-model="filters.click_id"
+                            label="Click ID / SubID"
+                            prepend-icon="mdi-identifier"
+                            outlined
+                            dense
+                            clearable
+                        ></v-text-field>
+                    </v-col>
+
+                    <!-- Campaign -->
+                    <v-col cols="12" md="2">
+                        <v-select
+                            v-model="filters.campaign_id"
+                            :items="filterOptions.campaigns"
+                            item-text="name"
+                            item-value="id"
+                            label="Campaign"
+                            prepend-icon="mdi-bullhorn"
+                            outlined
+                            dense
+                            clearable
+                        ></v-select>
+                    </v-col>
+
+                    <!-- Offer -->
+                    <v-col cols="12" md="2">
+                        <v-select
+                            v-model="filters.offer_id"
+                            :items="filterOptions.offers"
+                            item-text="name"
+                            item-value="id"
+                            label="Offer"
+                            prepend-icon="mdi-tag"
+                            outlined
+                            dense
+                            clearable
+                        ></v-select>
+                    </v-col>
+
+                    <!-- Apply Button -->
+                    <v-col cols="12" md="2">
+                        <v-btn color="primary" block @click="loadData">
+                            <v-icon left>mdi-magnify</v-icon>
+                            Apply
+                        </v-btn>
+                    </v-col>
+                </v-row>
+
+                <!-- Advanced Filters -->
+                <v-expansion-panels flat class="mt-2">
+                    <v-expansion-panel>
+                        <v-expansion-panel-header class="py-0">
+                            <span class="text-caption">Advanced Filters</span>
+                        </v-expansion-panel-header>
+                        <v-expansion-panel-content>
+                            <v-row dense>
+                                <v-col cols="12" md="2">
+                                    <v-text-field
+                                        v-model="filters.external_id"
+                                        label="External ID"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-autocomplete
+                                        v-model="filters.country"
+                                        :items="filterOptions.countries"
+                                        label="Country"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-autocomplete>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-text-field
+                                        v-model="filters.sub_id_1"
+                                        label="Sub ID 1"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-text-field>
+                                </v-col>
+                            </v-row>
+                        </v-expansion-panel-content>
+                    </v-expansion-panel>
+                </v-expansion-panels>
+            </v-card-text>
+        </v-card>
+
+        <!-- Column Selector -->
+        <v-card class="mb-4">
+            <v-card-title class="py-2">
+                <v-icon left small>mdi-table-column</v-icon>
+                Columns
+            </v-card-title>
+            <v-card-text class="py-2">
+                <v-chip-group v-model="selectedColumns" multiple column>
+                    <v-chip 
+                        v-for="col in allColumns" 
+                        :key="col.value" 
+                        :value="col.value"
+                        filter
+                        outlined
+                        small
+                    >
+                        {{ col.text }}
+                    </v-chip>
+                </v-chip-group>
+            </v-card-text>
+        </v-card>
+
+        <!-- Data Table -->
+        <v-card>
+            <v-data-table
+                :headers="visibleHeaders"
+                :items="conversions"
+                :loading="loading"
+                :options.sync="tableOptions"
+                :server-items-length="total"
+                :items-per-page="100"
+                :footer-props="{
+                    'items-per-page-options': [25, 50, 100, 250, 500]
+                }"
+                class="elevation-1"
+                dense
+                @update:options="onTableUpdate"
+            >
+                <!-- Click ID -->
+                <template v-slot:item.click_id="{ item }">
+                    <code class="text-caption" style="cursor: pointer;" @click="copyToClipboard(item.click_id)">
+                        {{ item.click_id }}
+                    </code>
+                </template>
+
+                <!-- Status -->
+                <template v-slot:item.status="{ item }">
+                    <v-chip 
+                        :color="getStatusColor(item.status)" 
+                        small 
+                        label
+                        dark
+                    >
+                        {{ item.status }}
+                    </v-chip>
+                </template>
+
+                <!-- Payout (Revenue) -->
+                <template v-slot:item.payout="{ item }">
+                    <span class="green--text font-weight-bold">
+                        ${{ parseFloat(item.payout || 0).toFixed(2) }}
+                    </span>
+                </template>
+
+                <!-- Revenue -->
+                <template v-slot:item.revenue="{ item }">
+                    <span class="green--text">
+                        ${{ parseFloat(item.revenue || 0).toFixed(2) }}
+                    </span>
+                </template>
+
+                <!-- Profit -->
+                <template v-slot:item.profit="{ item }">
+                    <span :class="parseFloat(item.profit || 0) >= 0 ? 'green--text' : 'red--text'">
+                        ${{ parseFloat(item.profit || 0).toFixed(2) }}
+                    </span>
+                </template>
+
+                <!-- External ID -->
+                <template v-slot:item.external_id="{ item }">
+                    <code v-if="item.external_id" class="text-caption">{{ item.external_id }}</code>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- Transaction ID -->
+                <template v-slot:item.transaction_id="{ item }">
+                    <code v-if="item.transaction_id" class="text-caption">{{ item.transaction_id }}</code>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- IP -->
+                <template v-slot:item.ip="{ item }">
+                    <code class="text-caption">{{ item.ip }}</code>
+                </template>
+
+                <!-- Time -->
+                <template v-slot:item.received_at="{ item }">
+                    <span class="text-caption">{{ formatDate(item.received_at) }}</span>
+                </template>
+            </v-data-table>
+        </v-card>
+
+        <!-- Snackbar for copy -->
+        <v-snackbar v-model="snackbar" :timeout="2000" color="success">
+            Copied to clipboard!
+        </v-snackbar>
+    </v-container>
+</script>
+
+<script type="application/javascript">
+Vue.component('conversions-log-component', {
+    template: '#conversions-log-template',
+    data() {
+        return {
+            loading: false,
+            dateMenu: false,
+            snackbar: false,
+            conversions: [],
+            total: 0,
+            statusCounts: {},
+            tableOptions: {
+                page: 1,
+                itemsPerPage: 100
+            },
+            filters: {
+                dateRange: [
+                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
+                    new Date().toISOString().split('T')[0]
+                ],
+                click_id: '',
+                status: null,
+                campaign_id: null,
+                offer_id: null,
+                external_id: '',
+                country: null,
+                sub_id_1: ''
+            },
+            filterOptions: {
+                countries: [],
+                campaigns: [],
+                offers: [],
+                statuses: ['lead', 'sale', 'upsale', 'rejected', 'hold', 'trash']
+            },
+            allColumns: [
+                { text: 'Click ID (SubID)', value: 'click_id' },
+                { text: 'Time', value: 'received_at' },
+                { text: 'Status', value: 'status' },
+                { text: 'Payout', value: 'payout' },
+                { text: 'Campaign', value: 'campaign_name' },
+                { text: 'Offer', value: 'offer_name' },
+                { text: 'Country', value: 'country' },
+                { text: 'City', value: 'city' },
+                { text: 'IP', value: 'ip' },
+                { text: 'External ID', value: 'external_id' },
+                { text: 'Transaction ID', value: 'transaction_id' },
+                { text: 'Revenue', value: 'revenue' },
+                { text: 'Profit', value: 'profit' },
+                { text: 'Currency', value: 'currency' },
+                { text: 'Sub ID 1', value: 'sub_id_1' },
+                { text: 'Sub ID 2', value: 'sub_id_2' },
+                { text: 'Sub ID 3', value: 'sub_id_3' },
+                { text: 'OS', value: 'os' },
+                { text: 'Device', value: 'device_type' },
+                { text: 'Visitor ID', value: 'visitor_id' }
+            ],
+            selectedColumns: ['click_id', 'received_at', 'status', 'payout', 'campaign_name', 'offer_name', 'country', 'external_id']
+        }
+    },
+    computed: {
+        dateRangeText() {
+            return this.filters.dateRange.join(' ~ ');
+        },
+        visibleHeaders() {
+            return this.allColumns.filter(col => this.selectedColumns.includes(col.value));
+        }
+    },
+    mounted() {
+        this.loadFilterOptions();
+        this.loadData();
+        this.$root.$on('load-conversions-log', this.loadData);
+    },
+    methods: {
+        async loadFilterOptions() {
+            try {
+                const res = await fetch('/backend/api/reports/filter-options');
+                const data = await res.json();
+                this.filterOptions = { ...this.filterOptions, ...data };
+            } catch (err) {
+                console.error('Error loading filter options:', err);
+            }
+        },
+        async loadData() {
+            this.loading = true;
+            try {
+                const params = new URLSearchParams();
+                
+                if (this.filters.dateRange[0]) params.append('date_from', this.filters.dateRange[0]);
+                if (this.filters.dateRange[1]) params.append('date_to', this.filters.dateRange[1]);
+                if (this.filters.click_id) params.append('click_id', this.filters.click_id);
+                if (this.filters.status) params.append('status', this.filters.status);
+                if (this.filters.campaign_id) params.append('campaign_id', this.filters.campaign_id);
+                if (this.filters.offer_id) params.append('offer_id', this.filters.offer_id);
+                if (this.filters.external_id) params.append('external_id', this.filters.external_id);
+                if (this.filters.country) params.append('country', this.filters.country);
+                if (this.filters.sub_id_1) params.append('sub_id_1', this.filters.sub_id_1);
+                
+                params.append('limit', this.tableOptions.itemsPerPage);
+                params.append('offset', (this.tableOptions.page - 1) * this.tableOptions.itemsPerPage);
+
+                const res = await fetch(`/backend/api/reports/conversions-log?${params}`);
+                const data = await res.json();
+                
+                this.conversions = data.items || [];
+                this.total = data.total || 0;
+                this.statusCounts = data.status_counts || {};
+            } catch (err) {
+                console.error('Error loading conversions log:', err);
+                this.$root.$emit('show-message', { type: 'error', text: 'Failed to load conversions log' });
+            } finally {
+                this.loading = false;
+            }
+        },
+        onTableUpdate(options) {
+            this.loadData();
+        },
+        filterByStatus(status) {
+            this.filters.status = status;
+            this.loadData();
+        },
+        clearFilters() {
+            this.filters = {
+                dateRange: [
+                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
+                    new Date().toISOString().split('T')[0]
+                ],
+                click_id: '',
+                status: null,
+                campaign_id: null,
+                offer_id: null,
+                external_id: '',
+                country: null,
+                sub_id_1: ''
+            };
+            this.loadData();
+        },
+        getStatusColor(status) {
+            const colors = {
+                'lead': 'blue',
+                'sale': 'success',
+                'upsale': 'purple',
+                'rejected': 'error',
+                'hold': 'warning',
+                'trash': 'grey'
+            };
+            return colors[status] || 'grey';
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return '—';
+            const d = new Date(dateStr);
+            return d.toLocaleString('ru-RU', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        },
+        copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+            this.snackbar = true;
+        },
+        exportCSV() {
+            const headers = this.visibleHeaders.map(h => h.text).join(',');
+            const rows = this.conversions.map(row => 
+                this.selectedColumns.map(col => `"${row[col] || ''}"`).join(',')
+            ).join('\n');
+            
+            const csv = headers + '\n' + rows;
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `conversions_log_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+    }
+});
+</script>
+{% endraw %}

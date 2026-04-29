@@ -1,0 +1,489 @@
+{% raw %}
+<script type="text/x-template" id="clicks-log-template">
+    <v-container fluid>
+        <v-row align="center" class="mb-4">
+            <v-col>
+                <h2>
+                    <v-icon left>mdi-mouse</v-icon>
+                    Clicks Log
+                </h2>
+                <div class="text-caption grey--text">
+                    Total: {{ total.toLocaleString() }} clicks
+                </div>
+            </v-col>
+            <v-col cols="auto">
+                <v-btn color="primary" @click="loadData" :loading="loading">
+                    <v-icon left>mdi-refresh</v-icon>
+                    Refresh
+                </v-btn>
+                <v-btn color="success" @click="exportCSV" class="ml-2" outlined>
+                    <v-icon left>mdi-download</v-icon>
+                    Export CSV
+                </v-btn>
+            </v-col>
+        </v-row>
+
+        <!-- Filters Card -->
+        <v-card class="mb-4">
+            <v-card-title class="py-2">
+                <v-icon left small>mdi-filter</v-icon>
+                Filters
+                <v-spacer></v-spacer>
+                <v-btn text small color="primary" @click="clearFilters">
+                    Clear All
+                </v-btn>
+            </v-card-title>
+            <v-card-text>
+                <v-row dense>
+                    <!-- Date Range -->
+                    <v-col cols="12" md="2">
+                        <v-menu
+                            v-model="dateMenu"
+                            :close-on-content-click="false"
+                            transition="scale-transition"
+                            offset-y
+                            min-width="auto"
+                        >
+                            <template v-slot:activator="{ on, attrs }">
+                                <v-text-field
+                                    v-model="dateRangeText"
+                                    label="Date Range"
+                                    prepend-icon="mdi-calendar"
+                                    readonly
+                                    outlined
+                                    dense
+                                    v-bind="attrs"
+                                    v-on="on"
+                                ></v-text-field>
+                            </template>
+                            <v-date-picker
+                                v-model="filters.dateRange"
+                                range
+                                @change="dateMenu = false"
+                            ></v-date-picker>
+                        </v-menu>
+                    </v-col>
+
+                    <!-- Click ID -->
+                    <v-col cols="12" md="2">
+                        <v-text-field
+                            v-model="filters.click_id"
+                            label="Click ID"
+                            prepend-icon="mdi-identifier"
+                            outlined
+                            dense
+                            clearable
+                        ></v-text-field>
+                    </v-col>
+
+                    <!-- Campaign -->
+                    <v-col cols="12" md="2">
+                        <v-select
+                            v-model="filters.campaign_id"
+                            :items="filterOptions.campaigns"
+                            item-text="name"
+                            item-value="id"
+                            label="Campaign"
+                            prepend-icon="mdi-bullhorn"
+                            outlined
+                            dense
+                            clearable
+                        ></v-select>
+                    </v-col>
+
+                    <!-- Offer -->
+                    <v-col cols="12" md="2">
+                        <v-select
+                            v-model="filters.offer_id"
+                            :items="filterOptions.offers"
+                            item-text="name"
+                            item-value="id"
+                            label="Offer"
+                            prepend-icon="mdi-tag"
+                            outlined
+                            dense
+                            clearable
+                        ></v-select>
+                    </v-col>
+
+                    <!-- Country -->
+                    <v-col cols="12" md="2">
+                        <v-autocomplete
+                            v-model="filters.country"
+                            :items="filterOptions.countries"
+                            label="Country"
+                            prepend-icon="mdi-earth"
+                            outlined
+                            dense
+                            clearable
+                        ></v-autocomplete>
+                    </v-col>
+
+                    <!-- Apply Button -->
+                    <v-col cols="12" md="2">
+                        <v-btn color="primary" block @click="loadData">
+                            <v-icon left>mdi-magnify</v-icon>
+                            Apply
+                        </v-btn>
+                    </v-col>
+                </v-row>
+
+                <!-- Advanced Filters (expandable) -->
+                <v-expansion-panels flat class="mt-2">
+                    <v-expansion-panel>
+                        <v-expansion-panel-header class="py-0">
+                            <span class="text-caption">Advanced Filters</span>
+                        </v-expansion-panel-header>
+                        <v-expansion-panel-content>
+                            <v-row dense>
+                                <v-col cols="12" md="2">
+                                    <v-select
+                                        v-model="filters.device_type"
+                                        :items="filterOptions.device_types"
+                                        label="Device Type"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-select>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-autocomplete
+                                        v-model="filters.os"
+                                        :items="filterOptions.os"
+                                        label="OS"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-autocomplete>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-text-field
+                                        v-model="filters.ip"
+                                        label="IP Address"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-text-field
+                                        v-model="filters.visitor_id"
+                                        label="Visitor ID"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-text-field
+                                        v-model="filters.sub_id_1"
+                                        label="Sub ID 1"
+                                        outlined
+                                        dense
+                                        clearable
+                                    ></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="2">
+                                    <v-checkbox
+                                        v-model="filters.is_bot"
+                                        label="Show Bots Only"
+                                        dense
+                                    ></v-checkbox>
+                                </v-col>
+                            </v-row>
+                        </v-expansion-panel-content>
+                    </v-expansion-panel>
+                </v-expansion-panels>
+            </v-card-text>
+        </v-card>
+
+        <!-- Column Selector -->
+        <v-card class="mb-4">
+            <v-card-title class="py-2">
+                <v-icon left small>mdi-table-column</v-icon>
+                Columns
+            </v-card-title>
+            <v-card-text class="py-2">
+                <v-chip-group v-model="selectedColumns" multiple column>
+                    <v-chip 
+                        v-for="col in allColumns" 
+                        :key="col.value" 
+                        :value="col.value"
+                        filter
+                        outlined
+                        small
+                    >
+                        {{ col.text }}
+                    </v-chip>
+                </v-chip-group>
+            </v-card-text>
+        </v-card>
+
+        <!-- Data Table -->
+        <v-card>
+            <v-data-table
+                :headers="visibleHeaders"
+                :items="clicks"
+                :loading="loading"
+                :options.sync="tableOptions"
+                :server-items-length="total"
+                :items-per-page="100"
+                :footer-props="{
+                    'items-per-page-options': [25, 50, 100, 250, 500]
+                }"
+                class="elevation-1"
+                dense
+                @update:options="onTableUpdate"
+            >
+                <!-- Click ID -->
+                <template v-slot:item.click_id="{ item }">
+                    <code class="text-caption" style="cursor: pointer;" @click="copyToClipboard(item.click_id)">
+                        {{ item.click_id }}
+                    </code>
+                </template>
+
+                <!-- Status -->
+                <template v-slot:item.status="{ item }">
+                    <v-chip 
+                        v-if="item.status" 
+                        :color="getStatusColor(item.status)" 
+                        x-small 
+                        label
+                    >
+                        {{ item.status }}
+                    </v-chip>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- Payout -->
+                <template v-slot:item.payout="{ item }">
+                    <span v-if="item.payout" class="green--text">
+                        ${{ parseFloat(item.payout || 0).toFixed(2) }}
+                    </span>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- Cost -->
+                <template v-slot:item.cost="{ item }">
+                    <span v-if="item.cost" class="red--text">
+                        ${{ parseFloat(item.cost || 0).toFixed(2) }}
+                    </span>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- IP -->
+                <template v-slot:item.ip="{ item }">
+                    <code class="text-caption">{{ item.ip }}</code>
+                </template>
+
+                <!-- Bot -->
+                <template v-slot:item.is_bot="{ item }">
+                    <v-icon v-if="item.is_bot" color="error" small>mdi-robot</v-icon>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- Proxy -->
+                <template v-slot:item.is_using_proxy="{ item }">
+                    <v-icon v-if="item.is_using_proxy" color="warning" small>mdi-vpn</v-icon>
+                    <span v-else class="grey--text">—</span>
+                </template>
+
+                <!-- Time -->
+                <template v-slot:item.received_at="{ item }">
+                    <span class="text-caption">{{ formatDate(item.received_at) }}</span>
+                </template>
+            </v-data-table>
+        </v-card>
+
+        <!-- Snackbar for copy -->
+        <v-snackbar v-model="snackbar" :timeout="2000" color="success">
+            Copied to clipboard!
+        </v-snackbar>
+    </v-container>
+</script>
+
+<script type="application/javascript">
+Vue.component('clicks-log-component', {
+    template: '#clicks-log-template',
+    data() {
+        return {
+            loading: false,
+            dateMenu: false,
+            snackbar: false,
+            clicks: [],
+            total: 0,
+            tableOptions: {
+                page: 1,
+                itemsPerPage: 100
+            },
+            filters: {
+                dateRange: [
+                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
+                    new Date().toISOString().split('T')[0]
+                ],
+                click_id: '',
+                campaign_id: null,
+                offer_id: null,
+                country: null,
+                device_type: null,
+                os: null,
+                ip: '',
+                visitor_id: '',
+                sub_id_1: '',
+                is_bot: false
+            },
+            filterOptions: {
+                countries: [],
+                campaigns: [],
+                offers: [],
+                landings: [],
+                device_types: [],
+                os: []
+            },
+            allColumns: [
+                { text: 'Click ID', value: 'click_id' },
+                { text: 'Time', value: 'received_at' },
+                { text: 'Campaign', value: 'campaign_name' },
+                { text: 'Offer', value: 'offer_name' },
+                { text: 'Landing', value: 'landing_name' },
+                { text: 'Status', value: 'status' },
+                { text: 'Payout', value: 'payout' },
+                { text: 'Cost', value: 'cost' },
+                { text: 'Country', value: 'country' },
+                { text: 'City', value: 'city' },
+                { text: 'IP', value: 'ip' },
+                { text: 'OS', value: 'os' },
+                { text: 'Device', value: 'device_type' },
+                { text: 'ISP', value: 'isp' },
+                { text: 'Bot', value: 'is_bot' },
+                { text: 'Proxy', value: 'is_using_proxy' },
+                { text: 'Sub ID 1', value: 'sub_id_1' },
+                { text: 'Sub ID 2', value: 'sub_id_2' },
+                { text: 'Visitor ID', value: 'visitor_id' },
+                { text: 'UTM Source', value: 'utm_source' },
+                { text: 'UTM Campaign', value: 'utm_campaign' }
+            ],
+            selectedColumns: ['click_id', 'received_at', 'campaign_name', 'offer_name', 'status', 'payout', 'country', 'ip', 'device_type']
+        }
+    },
+    computed: {
+        dateRangeText() {
+            return this.filters.dateRange.join(' ~ ');
+        },
+        visibleHeaders() {
+            return this.allColumns.filter(col => this.selectedColumns.includes(col.value));
+        }
+    },
+    mounted() {
+        this.loadFilterOptions();
+        this.loadData();
+        this.$root.$on('load-clicks-log', this.loadData);
+    },
+    methods: {
+        async loadFilterOptions() {
+            try {
+                const res = await fetch('/backend/api/reports/filter-options');
+                this.filterOptions = await res.json();
+            } catch (err) {
+                console.error('Error loading filter options:', err);
+            }
+        },
+        async loadData() {
+            this.loading = true;
+            try {
+                const params = new URLSearchParams();
+                
+                if (this.filters.dateRange[0]) params.append('date_from', this.filters.dateRange[0]);
+                if (this.filters.dateRange[1]) params.append('date_to', this.filters.dateRange[1]);
+                if (this.filters.click_id) params.append('click_id', this.filters.click_id);
+                if (this.filters.campaign_id) params.append('campaign_id', this.filters.campaign_id);
+                if (this.filters.offer_id) params.append('offer_id', this.filters.offer_id);
+                if (this.filters.country) params.append('country', this.filters.country);
+                if (this.filters.device_type) params.append('device_type', this.filters.device_type);
+                if (this.filters.os) params.append('os', this.filters.os);
+                if (this.filters.ip) params.append('ip', this.filters.ip);
+                if (this.filters.visitor_id) params.append('visitor_id', this.filters.visitor_id);
+                if (this.filters.sub_id_1) params.append('sub_id_1', this.filters.sub_id_1);
+                if (this.filters.is_bot) params.append('is_bot', 'true');
+                
+                params.append('limit', this.tableOptions.itemsPerPage);
+                params.append('offset', (this.tableOptions.page - 1) * this.tableOptions.itemsPerPage);
+
+                const res = await fetch(`/backend/api/reports/clicks-log-full?${params}`);
+                const data = await res.json();
+                
+                this.clicks = data.items || [];
+                this.total = data.total || 0;
+            } catch (err) {
+                console.error('Error loading clicks log:', err);
+                this.$root.$emit('show-message', { type: 'error', text: 'Failed to load clicks log' });
+            } finally {
+                this.loading = false;
+            }
+        },
+        onTableUpdate(options) {
+            this.loadData();
+        },
+        clearFilters() {
+            this.filters = {
+                dateRange: [
+                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
+                    new Date().toISOString().split('T')[0]
+                ],
+                click_id: '',
+                campaign_id: null,
+                offer_id: null,
+                country: null,
+                device_type: null,
+                os: null,
+                ip: '',
+                visitor_id: '',
+                sub_id_1: '',
+                is_bot: false
+            };
+            this.loadData();
+        },
+        getStatusColor(status) {
+            const colors = {
+                'lead': 'blue',
+                'sale': 'success',
+                'upsale': 'purple',
+                'rejected': 'error',
+                'hold': 'warning',
+                'trash': 'grey'
+            };
+            return colors[status] || 'grey';
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return '—';
+            const d = new Date(dateStr);
+            return d.toLocaleString('ru-RU', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        },
+        copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+            this.snackbar = true;
+        },
+        exportCSV() {
+            const headers = this.visibleHeaders.map(h => h.text).join(',');
+            const rows = this.clicks.map(row => 
+                this.selectedColumns.map(col => `"${row[col] || ''}"`).join(',')
+            ).join('\n');
+            
+            const csv = headers + '\n' + rows;
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `clicks_log_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+    }
+});
+</script>
+{% endraw %}

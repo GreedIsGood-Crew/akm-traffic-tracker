@@ -34,6 +34,8 @@ class CampaignOut(CampaignIn):
 @router.get("/")
 def get_campaigns(
     db: Session = Depends(get_db),
+    search: Optional[str] = Query(None, description="Search by campaign name"),
+    group_id: Optional[int] = Query(None, description="Filter by group ID"),
     date_from: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="End date YYYY-MM-DD")
 ):
@@ -44,8 +46,22 @@ def get_campaigns(
     if not date_from:
         date_from = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
 
+    # Build WHERE clause for filters
+    where_clauses = ["1=1"]
+    params = {"date_from": date_from, "date_to": date_to}
+    
+    if search:
+        where_clauses.append("c.name ILIKE :search")
+        params["search"] = f"%{search}%"
+    
+    if group_id:
+        where_clauses.append("c.group_id = :group_id")
+        params["group_id"] = group_id
+    
+    where_sql = " AND ".join(where_clauses)
+
     # SQL query to get campaigns with aggregated statistics
-    query = text("""
+    query = text(f"""
         SELECT 
             c.id,
             c.name,
@@ -69,13 +85,14 @@ def get_campaigns(
         FROM campaigns c
         LEFT JOIN clicks_daily_stats s ON s.campaign_id = c.id
             AND s.date >= :date_from AND s.date <= :date_to
+        WHERE {where_sql}
         GROUP BY c.id, c.name, c.alias, c.status, c.type, c.redirect_mode, 
                  c.domain_id, c.traffic_source_id, c.config, c.notes, c.group_id,
                  c.created_at, c.updated_at
         ORDER BY c.id ASC
     """)
 
-    result = db.execute(query, {"date_from": date_from, "date_to": date_to})
+    result = db.execute(query, params)
     rows = result.fetchall()
 
     campaigns = []

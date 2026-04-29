@@ -278,7 +278,8 @@ async def save_click_to_db(meta: dict):
         "sub_id_1", "sub_id_2", "sub_id_3", "sub_id_4", "sub_id_5",
         "sub_id_6", "sub_id_7", "sub_id_8", "sub_id_9", "sub_id_10",
         "utm_campaign", "utm_creative", "utm_source", "traffic_source_name",
-        "os", "isp", "is_using_proxy", "is_bot", "device_type"
+        "os", "isp", "is_using_proxy", "is_bot", "device_type",
+        "cost"  # Money spent on traffic (from traffic source CPC parameter)
     }
 
     # фильтруем только допустимые поля
@@ -286,7 +287,11 @@ async def save_click_to_db(meta: dict):
 
     insert_data["received_at"] = datetime.utcnow()
 
-    insert_data["status"] = 'lead'
+    # НЕ устанавливаем status при клике! 
+    # Конверсия записывается только через postback (/pb/{click_id}/{status}/{payout})
+    # status = NULL означает "просто клик, без конверсии"
+    if "status" in insert_data:
+        del insert_data["status"]
 
     columns = ", ".join(insert_data.keys())
     values_placeholders = ", ".join(

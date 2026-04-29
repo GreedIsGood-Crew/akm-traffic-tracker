@@ -15,17 +15,74 @@
             </v-col>
         </v-row>
 
+        <!-- Filter Builder -->
+        <v-card class="mt-4 pa-4">
+            <v-card-title class="pa-0 mb-3">
+                <v-icon left>mdi-filter</v-icon>
+                Advanced Filters
+            </v-card-title>
+            
+            <v-row v-for="(filter, index) in filters" :key="index" dense align="center">
+                <v-col cols="12" md="3">
+                    <v-select
+                        v-model="filter.field"
+                        :items="filterFields"
+                        label="Field"
+                        outlined
+                        dense
+                    ></v-select>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-select
+                        v-model="filter.operator"
+                        :items="operators"
+                        label="Operator"
+                        outlined
+                        dense
+                    ></v-select>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field
+                        v-model="filter.value"
+                        label="Value"
+                        outlined
+                        dense
+                        hint="For IN operator: value1, value2, value3"
+                    ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="2">
+                    <v-btn icon color="error" @click="removeFilter(index)">
+                        <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                </v-col>
+            </v-row>
+            
+            <v-btn text color="primary" @click="addFilter" class="mt-2">
+                <v-icon left>mdi-plus</v-icon>
+                Add Filter
+            </v-btn>
+        </v-card>
+
+        <!-- Group By Multi-Select -->
+        <v-card class="mt-4 pa-4">
+            <v-card-title class="pa-0 mb-3">
+                <v-icon left>mdi-group</v-icon>
+                Group By (Hierarchy)
+            </v-card-title>
+            
+            <v-chip-group v-model="selectedGroups" multiple column>
+                <v-chip v-for="g in groupByOptions" :key="g.value" :value="g.value" filter outlined>
+                    {{ g.text }}
+                </v-chip>
+            </v-chip-group>
+            
+            <div v-if="selectedGroups.length > 1" class="mt-2 text-caption grey--text">
+                Hierarchy: {{ selectedGroups.join(' → ') }}
+            </div>
+        </v-card>
+
         <!-- Filters Row -->
         <v-row dense class="mt-4" align="center">
-            <v-col cols="12" md="2">
-                <v-select
-                    v-model="groupBy"
-                    :items="groupByOptions"
-                    label="Group By"
-                    outlined
-                    dense
-                ></v-select>
-            </v-col>
             <v-col cols="12" md="3">
                 <v-menu
                     v-model="dateMenu"
@@ -55,7 +112,7 @@
                 </v-menu>
             </v-col>
             <v-col cols="12" md="2">
-                <v-btn color="primary" @click="loadAggregatedReport" block>
+                <v-btn color="primary" @click="loadAdvancedReport" block>
                     <v-icon left>mdi-magnify</v-icon>
                     Apply Filters
                 </v-btn>
@@ -74,12 +131,68 @@
             </v-col>
         </v-row>
 
+        <!-- Click Log Search -->
+        <v-expansion-panels class="mt-4">
+            <v-expansion-panel>
+                <v-expansion-panel-header>
+                    <span><v-icon left>mdi-history</v-icon> Click Log Search</span>
+                </v-expansion-panel-header>
+                <v-expansion-panel-content>
+                    <v-row dense>
+                        <v-col cols="12" md="4">
+                            <v-text-field
+                                v-model="clickLogSearch.click_id"
+                                label="Click ID"
+                                outlined
+                                dense
+                                clearable
+                            ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="4">
+                            <v-text-field
+                                v-model="clickLogSearch.campaign"
+                                label="Campaign Name"
+                                outlined
+                                dense
+                                clearable
+                            ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="2">
+                            <v-btn color="primary" @click="searchClickLog" block>
+                                <v-icon left>mdi-magnify</v-icon>
+                                Search
+                            </v-btn>
+                        </v-col>
+                    </v-row>
+                    
+                    <v-data-table
+                        v-if="clickLogResults.length"
+                        :headers="clickLogHeaders"
+                        :items="clickLogResults"
+                        :items-per-page="25"
+                        class="mt-4"
+                    >
+                        <template v-slot:item.click_id="{ item }">
+                            <code>{{ item.click_id }}</code>
+                        </template>
+                    </v-data-table>
+                    
+                    <div v-if="clickLogResults.length === 0 && clickLogSearched" class="text-center pa-4 grey--text">
+                        No results found
+                    </div>
+                </v-expansion-panel-content>
+            </v-expansion-panel>
+        </v-expansion-panels>
+
         <!-- Aggregated Report Table -->
         <v-row dense class="mt-4" v-if="!showConversions">
             <v-col>
                 <v-card>
                     <v-card-title>
-                        Aggregated Report by {{ groupByLabel }}
+                        Aggregated Report
+                        <v-chip small class="ml-2" v-if="selectedGroups.length">
+                            Grouped by: {{ selectedGroups.join(' → ') }}
+                        </v-chip>
                     </v-card-title>
                     <v-data-table
                         :headers="aggregatedHeaders"
@@ -89,32 +202,32 @@
                         class="elevation-1"
                     >
                         <template v-slot:item.clicks="{ item }">
-                            {{ item.clicks.toLocaleString() }}
+                            {{ (item.clicks || 0).toLocaleString() }}
                         </template>
                         <template v-slot:item.unique_clicks="{ item }">
-                            {{ item.unique_clicks.toLocaleString() }}
+                            {{ (item.unique_clicks || 0).toLocaleString() }}
                         </template>
                         <template v-slot:item.conversions="{ item }">
-                            {{ item.conversions.toLocaleString() }}
+                            {{ (item.conversions || 0).toLocaleString() }}
                         </template>
                         <template v-slot:item.revenue="{ item }">
-                            <span class="green--text">${{ item.revenue.toFixed(2) }}</span>
+                            <span class="green--text">${{ (item.revenue || 0).toFixed(2) }}</span>
                         </template>
                         <template v-slot:item.cost="{ item }">
-                            <span class="red--text">${{ item.cost.toFixed(2) }}</span>
+                            <span class="red--text">${{ (item.cost || 0).toFixed(2) }}</span>
                         </template>
                         <template v-slot:item.profit="{ item }">
-                            <span :class="item.profit >= 0 ? 'green--text' : 'red--text'">
-                                ${{ item.profit.toFixed(2) }}
+                            <span :class="(item.profit || 0) >= 0 ? 'green--text' : 'red--text'">
+                                ${{ (item.profit || 0).toFixed(2) }}
                             </span>
                         </template>
                         <template v-slot:item.roi="{ item }">
-                            <span :class="item.roi >= 0 ? 'green--text' : 'red--text'">
-                                {{ item.roi.toFixed(1) }}%
+                            <span :class="(item.roi || 0) >= 0 ? 'green--text' : 'red--text'">
+                                {{ (item.roi || 0).toFixed(1) }}%
                             </span>
                         </template>
                         <template v-slot:item.cr="{ item }">
-                            {{ item.cr.toFixed(2) }}%
+                            {{ (item.cr || 0).toFixed(2) }}%
                         </template>
                     </v-data-table>
                 </v-card>
@@ -154,6 +267,7 @@
                 showConversions: false,
                 dateMenu: false,
                 groupBy: 'campaign',
+                selectedGroups: ['campaign'],
                 groupByOptions: [
                     { text: 'Campaign', value: 'campaign' },
                     { text: 'Offer', value: 'offer' },
@@ -164,6 +278,42 @@
                 dateRange: [
                     new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
                     new Date().toISOString().split('T')[0]
+                ],
+                // Advanced Filters
+                filters: [],
+                filterFields: [
+                    { text: 'Country', value: 'country' },
+                    { text: 'Campaign', value: 'campaign' },
+                    { text: 'Offer', value: 'offer' },
+                    { text: 'Clicks', value: 'clicks' },
+                    { text: 'Conversions', value: 'conversions' },
+                    { text: 'Revenue', value: 'revenue' },
+                    { text: 'Cost', value: 'cost' },
+                    { text: 'Profit', value: 'profit' },
+                    { text: 'ROI', value: 'roi' }
+                ],
+                operators: [
+                    { text: 'Equals', value: 'EQUALS' },
+                    { text: 'Not Equals', value: 'NOT_EQUALS' },
+                    { text: 'Greater Than', value: 'GREATER_THAN' },
+                    { text: 'Less Than', value: 'LESS_THAN' },
+                    { text: 'Greater or Equal', value: 'GREATER_OR_EQUAL' },
+                    { text: 'Less or Equal', value: 'LESS_OR_EQUAL' },
+                    { text: 'Contains', value: 'CONTAINS' },
+                    { text: 'In List', value: 'IN' }
+                ],
+                // Click Log Search
+                clickLogSearch: { click_id: '', campaign: '' },
+                clickLogResults: [],
+                clickLogSearched: false,
+                clickLogHeaders: [
+                    { text: 'Click ID', value: 'click_id' },
+                    { text: 'Campaign', value: 'campaign_name' },
+                    { text: 'Offer', value: 'offer_name' },
+                    { text: 'Country', value: 'country' },
+                    { text: 'Status', value: 'status' },
+                    { text: 'Payout', value: 'payout' },
+                    { text: 'Time', value: 'received_at' }
                 ],
                 summaryMetrics: [
                     { title: 'Clicks', value: 0, color: 'blue darken-2' },
@@ -210,11 +360,91 @@
             }
         },
         mounted() {
-            this.loadAggregatedReport();
+            this.loadAdvancedReport();
             this.loadReports();
-            this.$root.$on('load-reports', this.loadAggregatedReport);
+            this.$root.$on('load-reports', this.loadAdvancedReport);
         },
         methods: {
+            // Filter methods
+            addFilter() {
+                this.filters.push({ field: 'country', operator: 'EQUALS', value: '' });
+            },
+            removeFilter(index) {
+                this.filters.splice(index, 1);
+            },
+            // Click Log Search
+            searchClickLog() {
+                this.clickLogSearched = true;
+                const params = new URLSearchParams();
+                if (this.clickLogSearch.click_id) params.append('click_id', this.clickLogSearch.click_id);
+                if (this.clickLogSearch.campaign) params.append('campaign', this.clickLogSearch.campaign);
+                params.append('date_from', this.dateRange[0]);
+                params.append('date_to', this.dateRange[1]);
+                
+                fetch(`/backend/api/reports/clicks-log?${params}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        this.clickLogResults = data.items || [];
+                    })
+                    .catch(err => {
+                        console.error('Error searching click log:', err);
+                        this.$root.$emit('show-message', { type: 'error', text: err.message });
+                    });
+            },
+            // Advanced Report with filters
+            loadAdvancedReport() {
+                this.loading = true;
+                this.loadSummary();
+                
+                const groups = this.selectedGroups.length ? this.selectedGroups : ['campaign'];
+                
+                fetch('/backend/api/reports/advanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date_from: this.dateRange[0],
+                        date_to: this.dateRange[1],
+                        group_by: groups,
+                        filters: this.filters.filter(f => f.value),
+                        metrics: ['clicks', 'unique_clicks', 'conversions', 'revenue', 'cost', 'profit', 'roi', 'cr']
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    // Flatten hierarchical data for simple table display
+                    if (Array.isArray(data) && data.length && data[0].children) {
+                        // Hierarchical data - flatten for now
+                        const flattened = [];
+                        data.forEach(parent => {
+                            flattened.push({
+                                name: parent.name,
+                                ...parent.totals,
+                                _isParent: true
+                            });
+                            parent.children.forEach(child => {
+                                flattened.push({
+                                    name: '  → ' + (child.country || child.offer_name || child.source_name || child.date || 'Unknown'),
+                                    ...child,
+                                    _isChild: true
+                                });
+                            });
+                        });
+                        this.aggregatedData = flattened;
+                    } else {
+                        // Simple flat data
+                        this.aggregatedData = data.map(row => ({
+                            name: row.campaign_name || row.offer_name || row.source_name || row.country || row.date || 'Unknown',
+                            ...row
+                        }));
+                    }
+                    this.loading = false;
+                })
+                .catch(err => {
+                    console.error('Error loading advanced report:', err);
+                    this.$root.$emit('show-message', { type: 'error', text: err.message });
+                    this.loading = false;
+                });
+            },
             loadSummary() {
                 const dateFrom = this.dateRange[0];
                 const dateTo = this.dateRange[1];

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta
 from typing import List, Optional
+from pydantic import BaseModel
 from db import get_db
 from models.base import Base
 import csv
@@ -334,4 +335,645 @@ def get_report_summary(
         "cr": round(cr, 2),
         "date_from": date_from,
         "date_to": date_to
+    }
+
+
+# ====== Advanced Reports Models ======
+
+class ReportFilter(BaseModel):
+    field: str           # country, campaign_id, offer_id, status, etc.
+    operator: str        # EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, CONTAINS, IN
+    value: str           # Значение для сравнения
+
+class AdvancedReportRequest(BaseModel):
+    date_from: str
+    date_to: str
+    group_by: List[str]  # ['campaign', 'country'] — иерархическая группировка
+    filters: Optional[List[ReportFilter]] = []
+    metrics: Optional[List[str]] = ['clicks', 'conversions', 'revenue', 'cost', 'profit']
+
+
+# ====== Advanced Reports Helpers ======
+
+FIELD_MAPPING = {
+    'campaign': 'c.name',
+    'campaign_id': 's.campaign_id',
+    'offer': 'o.name',
+    'offer_id': 's.offer_id',
+    'source': 'src.name',
+    'country': 's.country',
+    'date': 's.date',
+    'status': 'cd.status',
+    'clicks': 'clicks',
+    'conversions': 'conversions',
+    'revenue': 'revenue',
+    'cost': 'cost',
+    'profit': 'profit',
+    'roi': 'roi'
+}
+
+OPERATOR_MAPPING = {
+    'EQUALS': '=',
+    'NOT_EQUALS': '!=',
+    'GREATER_THAN': '>',
+    'LESS_THAN': '<',
+    'GREATER_OR_EQUAL': '>=',
+    'LESS_OR_EQUAL': '<=',
+    'CONTAINS': 'ILIKE',
+    'IN': 'IN'
+}
+
+
+def build_filter_clause(filters: List[ReportFilter]) -> tuple:
+    """Build WHERE clause from filters."""
+    clauses = []
+    params = {}
+    
+    for i, f in enumerate(filters):
+        field = FIELD_MAPPING.get(f.field, f.field)
+        op = OPERATOR_MAPPING.get(f.operator, '=')
+        param_name = f"filter_{i}"
+        
+        if f.operator == 'CONTAINS':
+            clauses.append(f"{field} ILIKE :{param_name}")
+            params[param_name] = f"%{f.value}%"
+        elif f.operator == 'IN':
+            values = [v.strip() for v in f.value.split(',')]
+            placeholders = ', '.join([f":{param_name}_{j}" for j in range(len(values))])
+            clauses.append(f"{field} IN ({placeholders})")
+            for j, v in enumerate(values):
+                params[f"{param_name}_{j}"] = v
+        else:
+            clauses.append(f"{field} {op} :{param_name}")
+            # Try to convert to number if numeric operator
+            if f.operator in ('GREATER_THAN', 'LESS_THAN', 'GREATER_OR_EQUAL', 'LESS_OR_EQUAL'):
+                try:
+                    params[param_name] = float(f.value)
+                except:
+                    params[param_name] = f.value
+            else:
+                params[param_name] = f.value
+    
+    return ' AND '.join(clauses) if clauses else '1=1', params
+
+
+# ====== Advanced Report Endpoint ======
+
+@router.post("/advanced")
+async def get_advanced_report(
+    request: AdvancedReportRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Get advanced report with multiple groupings and filters.
+    
+    Group by hierarchy: First group is parent, subsequent are children.
+    Example: group_by=['campaign', 'country'] → Campaign > Country
+    """
+    
+    # Build filter clause
+    filter_clause, filter_params = build_filter_clause(request.filters or [])
+    
+    # Build GROUP BY fields
+    group_fields = []
+    select_fields = []
+    
+    for g in request.group_by:
+        if g == 'campaign':
+            group_fields.append('s.campaign_id')
+            group_fields.append('c.name')
+            select_fields.append('s.campaign_id')
+            select_fields.append('c.name as campaign_name')
+        elif g == 'offer':
+            group_fields.append('s.offer_id')
+            group_fields.append('o.name')
+            select_fields.append('s.offer_id')
+            select_fields.append('o.name as offer_name')
+        elif g == 'source':
+            group_fields.append('c.traffic_source_id')
+            group_fields.append('src.name')
+            select_fields.append('c.traffic_source_id as source_id')
+            select_fields.append('src.name as source_name')
+        elif g == 'country':
+            group_fields.append('s.country')
+            select_fields.append("COALESCE(s.country, 'Unknown') as country")
+        elif g == 'date':
+            group_fields.append('s.date')
+            select_fields.append('s.date::text as date')
+    
+    # Build metrics
+    metrics_sql = []
+    for m in request.metrics or ['clicks', 'conversions', 'revenue', 'cost', 'profit']:
+        if m == 'clicks':
+            metrics_sql.append('COALESCE(SUM(s.clicks), 0)::bigint as clicks')
+        elif m == 'unique_clicks':
+            metrics_sql.append('COALESCE(SUM(s.unique_clicks), 0)::bigint as unique_clicks')
+        elif m == 'conversions':
+            metrics_sql.append('COALESCE(SUM(s.conversions), 0)::bigint as conversions')
+        elif m == 'revenue':
+            metrics_sql.append('COALESCE(SUM(s.revenue), 0)::numeric(12,2) as revenue')
+        elif m == 'cost':
+            metrics_sql.append('COALESCE(SUM(s.cost), 0)::numeric(12,2) as cost')
+        elif m == 'profit':
+            metrics_sql.append('(COALESCE(SUM(s.revenue), 0) - COALESCE(SUM(s.cost), 0))::numeric(12,2) as profit')
+        elif m == 'roi':
+            metrics_sql.append('''
+                CASE WHEN COALESCE(SUM(s.cost), 0) > 0 
+                     THEN ROUND(((SUM(s.revenue) - SUM(s.cost)) / SUM(s.cost) * 100)::numeric, 2)
+                     ELSE 0 
+                END as roi
+            ''')
+        elif m == 'cr':
+            metrics_sql.append('''
+                CASE WHEN COALESCE(SUM(s.clicks), 0) > 0 
+                     THEN ROUND((SUM(s.conversions)::numeric / SUM(s.clicks) * 100), 2)
+                     ELSE 0 
+                END as cr
+            ''')
+    
+    # Build full query
+    query = text(f"""
+        SELECT 
+            {', '.join(select_fields)},
+            {', '.join(metrics_sql)}
+        FROM clicks_daily_stats s
+        LEFT JOIN campaigns c ON c.id = s.campaign_id
+        LEFT JOIN offers o ON o.id = s.offer_id
+        LEFT JOIN sources src ON src.id = c.traffic_source_id
+        WHERE s.date BETWEEN :date_from AND :date_to
+          AND ({filter_clause})
+        GROUP BY {', '.join(group_fields)}
+        ORDER BY {group_fields[0]} NULLS LAST
+    """)
+    
+    params = {
+        "date_from": request.date_from,
+        "date_to": request.date_to,
+        **filter_params
+    }
+    
+    result = db.execute(query, params)
+    rows = result.fetchall()
+    
+    # Convert to hierarchical structure if multiple groups
+    if len(request.group_by) > 1:
+        return build_hierarchy(rows, request.group_by)
+    
+    return [dict(row._mapping) for row in rows]
+
+
+def build_hierarchy(rows, group_by: List[str]) -> List[dict]:
+    """Build hierarchical data structure for multi-level grouping."""
+    
+    hierarchy = {}
+    
+    for row in rows:
+        row_dict = dict(row._mapping)
+        
+        # Get parent key
+        parent_key = row_dict.get(f"{group_by[0]}_id") or row_dict.get(group_by[0])
+        parent_name = row_dict.get(f"{group_by[0]}_name", str(parent_key))
+        
+        if parent_key not in hierarchy:
+            hierarchy[parent_key] = {
+                "id": parent_key,
+                "name": parent_name,
+                "children": [],
+                "totals": {k: 0 for k in ['clicks', 'conversions', 'revenue', 'cost', 'profit']}
+            }
+        
+        # Add child data
+        child = {k: v for k, v in row_dict.items() 
+                 if not k.startswith(group_by[0])}
+        hierarchy[parent_key]["children"].append(child)
+        
+        # Accumulate totals
+        for metric in ['clicks', 'conversions', 'revenue', 'cost', 'profit']:
+            if metric in row_dict:
+                hierarchy[parent_key]["totals"][metric] += float(row_dict[metric] or 0)
+    
+    return list(hierarchy.values())
+
+
+# ====== Click Log Endpoint ======
+
+@router.get("/clicks-log")
+async def get_clicks_log(
+    click_id: Optional[str] = Query(None, description="Search by click_id"),
+    campaign: Optional[str] = Query(None, description="Search by campaign name"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0),
+    db: Session = Depends(get_db)
+):
+    """Get click log with search by click_id and campaign name."""
+    
+    where_clauses = []
+    params = {"limit": limit, "offset": offset}
+    
+    if click_id:
+        where_clauses.append("cd.click_id ILIKE :click_id")
+        params["click_id"] = f"%{click_id}%"
+    
+    if campaign:
+        where_clauses.append("c.name ILIKE :campaign")
+        params["campaign"] = f"%{campaign}%"
+    
+    if date_from:
+        where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
+        params["date_from"] = date_from
+    
+    if date_to:
+        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        params["date_to"] = date_to
+    
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+    
+    query = text(f"""
+        SELECT 
+            cd.id,
+            cd.click_id,
+            cd.campaign_id,
+            c.name as campaign_name,
+            cd.offer_id,
+            o.name as offer_name,
+            cd.country,
+            cd.ip,
+            cd.status,
+            cd.payout,
+            cd.sub_id_1,
+            cd.sub_id_2,
+            cd.sub_id_3,
+            cd.received_at::text as received_at
+        FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
+        LEFT JOIN offers o ON o.id = cd.offer_id
+        WHERE {where_sql}
+        ORDER BY cd.received_at DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    
+    result = db.execute(query, params)
+    rows = result.fetchall()
+    
+    # Get total count
+    count_query = text(f"""
+        SELECT COUNT(*) 
+        FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
+        WHERE {where_sql}
+    """)
+    count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
+    total = db.execute(count_query, count_params).scalar()
+    
+    return {
+        "items": [dict(row._mapping) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+# ====== Conversions Log Endpoint (Keitaro-style) ======
+
+@router.get("/conversions-log")
+async def get_conversions_log(
+    click_id: Optional[str] = Query(None, description="Search by click_id"),
+    campaign_id: Optional[int] = Query(None, description="Filter by campaign"),
+    offer_id: Optional[int] = Query(None, description="Filter by offer"),
+    status: Optional[str] = Query(None, description="Filter by status: lead, sale, upsale, rejected, hold, trash"),
+    external_id: Optional[str] = Query(None, description="Search by external_id"),
+    sub_id_1: Optional[str] = Query(None, description="Filter by sub_id_1"),
+    country: Optional[str] = Query(None, description="Filter by country"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0),
+    db: Session = Depends(get_db)
+):
+    """
+    Get conversions log (Keitaro-style).
+    Shows only records WITH conversion status (not regular clicks).
+    """
+    
+    where_clauses = ["cd.status IS NOT NULL"]  # Only conversions!
+    params = {"limit": limit, "offset": offset}
+    
+    if click_id:
+        where_clauses.append("cd.click_id ILIKE :click_id")
+        params["click_id"] = f"%{click_id}%"
+    
+    if campaign_id:
+        where_clauses.append("cd.campaign_id = :campaign_id")
+        params["campaign_id"] = campaign_id
+    
+    if offer_id:
+        where_clauses.append("cd.offer_id = :offer_id")
+        params["offer_id"] = offer_id
+    
+    if status:
+        where_clauses.append("cd.status::text = :status")
+        params["status"] = status
+    
+    if external_id:
+        where_clauses.append("cd.external_id ILIKE :external_id")
+        params["external_id"] = f"%{external_id}%"
+    
+    if sub_id_1:
+        where_clauses.append("cd.sub_id_1 = :sub_id_1")
+        params["sub_id_1"] = sub_id_1
+    
+    if country:
+        where_clauses.append("cd.country = :country")
+        params["country"] = country
+    
+    if date_from:
+        where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
+        params["date_from"] = date_from
+    
+    if date_to:
+        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        params["date_to"] = date_to
+    
+    where_sql = " AND ".join(where_clauses)
+    
+    query = text(f"""
+        SELECT 
+            cd.id,
+            cd.click_id,
+            cd.campaign_id,
+            c.name as campaign_name,
+            cd.offer_id,
+            o.name as offer_name,
+            cd.status::text as status,
+            cd.payout,
+            cd.revenue,
+            cd.profit,
+            cd.currency,
+            cd.external_id,
+            cd.transaction_id,
+            cd.country,
+            cd.region,
+            cd.city,
+            cd.ip::text as ip,
+            cd.visitor_id,
+            cd.sub_id_1,
+            cd.sub_id_2,
+            cd.sub_id_3,
+            cd.sub_id_4,
+            cd.sub_id_5,
+            cd.os,
+            cd.device_type,
+            cd.received_at::text as received_at
+        FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
+        LEFT JOIN offers o ON o.id = cd.offer_id
+        WHERE {where_sql}
+        ORDER BY cd.received_at DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    
+    result = db.execute(query, params)
+    rows = result.fetchall()
+    
+    # Get total count
+    count_query = text(f"""
+        SELECT COUNT(*) 
+        FROM conversions_data cd
+        WHERE {where_sql}
+    """)
+    count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
+    total = db.execute(count_query, count_params).scalar()
+    
+    # Get status counts
+    status_query = text("""
+        SELECT 
+            cd.status::text as status,
+            COUNT(*) as count
+        FROM conversions_data cd
+        WHERE cd.status IS NOT NULL
+        GROUP BY cd.status
+    """)
+    status_counts = {row.status: row.count for row in db.execute(status_query).fetchall()}
+    
+    return {
+        "items": [dict(row._mapping) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "status_counts": status_counts
+    }
+
+
+# ====== Full Clicks Log Endpoint (Keitaro-style) ======
+
+@router.get("/clicks-log-full")
+async def get_clicks_log_full(
+    click_id: Optional[str] = Query(None, description="Search by click_id"),
+    campaign_id: Optional[int] = Query(None, description="Filter by campaign"),
+    offer_id: Optional[int] = Query(None, description="Filter by offer"),
+    landing_id: Optional[int] = Query(None, description="Filter by landing"),
+    country: Optional[str] = Query(None, description="Filter by country"),
+    city: Optional[str] = Query(None, description="Filter by city"),
+    os: Optional[str] = Query(None, description="Filter by OS"),
+    device_type: Optional[str] = Query(None, description="Filter by device type"),
+    is_bot: Optional[bool] = Query(None, description="Filter bots"),
+    is_using_proxy: Optional[bool] = Query(None, description="Filter proxy"),
+    sub_id_1: Optional[str] = Query(None, description="Filter by sub_id_1"),
+    sub_id_2: Optional[str] = Query(None, description="Filter by sub_id_2"),
+    visitor_id: Optional[str] = Query(None, description="Filter by visitor_id"),
+    ip: Optional[str] = Query(None, description="Filter by IP"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0),
+    db: Session = Depends(get_db)
+):
+    """
+    Get full clicks log (Keitaro-style).
+    Shows ALL records including clicks without conversions.
+    """
+    
+    where_clauses = ["1=1"]
+    params = {"limit": limit, "offset": offset}
+    
+    if click_id:
+        where_clauses.append("cd.click_id ILIKE :click_id")
+        params["click_id"] = f"%{click_id}%"
+    
+    if campaign_id:
+        where_clauses.append("cd.campaign_id = :campaign_id")
+        params["campaign_id"] = campaign_id
+    
+    if offer_id:
+        where_clauses.append("cd.offer_id = :offer_id")
+        params["offer_id"] = offer_id
+    
+    if landing_id:
+        where_clauses.append("cd.landing_id = :landing_id")
+        params["landing_id"] = landing_id
+    
+    if country:
+        where_clauses.append("cd.country = :country")
+        params["country"] = country
+    
+    if city:
+        where_clauses.append("cd.city ILIKE :city")
+        params["city"] = f"%{city}%"
+    
+    if os:
+        where_clauses.append("cd.os ILIKE :os")
+        params["os"] = f"%{os}%"
+    
+    if device_type:
+        where_clauses.append("cd.device_type = :device_type")
+        params["device_type"] = device_type
+    
+    if is_bot is not None:
+        where_clauses.append("cd.is_bot = :is_bot")
+        params["is_bot"] = is_bot
+    
+    if is_using_proxy is not None:
+        where_clauses.append("cd.is_using_proxy = :is_using_proxy")
+        params["is_using_proxy"] = is_using_proxy
+    
+    if sub_id_1:
+        where_clauses.append("cd.sub_id_1 = :sub_id_1")
+        params["sub_id_1"] = sub_id_1
+    
+    if sub_id_2:
+        where_clauses.append("cd.sub_id_2 = :sub_id_2")
+        params["sub_id_2"] = sub_id_2
+    
+    if visitor_id:
+        where_clauses.append("cd.visitor_id = :visitor_id")
+        params["visitor_id"] = visitor_id
+    
+    if ip:
+        where_clauses.append("cd.ip::text ILIKE :ip")
+        params["ip"] = f"%{ip}%"
+    
+    if date_from:
+        where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
+        params["date_from"] = date_from
+    
+    if date_to:
+        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        params["date_to"] = date_to
+    
+    where_sql = " AND ".join(where_clauses)
+    
+    query = text(f"""
+        SELECT 
+            cd.id,
+            cd.click_id,
+            cd.campaign_id,
+            c.name as campaign_name,
+            cd.offer_id,
+            o.name as offer_name,
+            cd.landing_id,
+            l.name as landing_name,
+            cd.status::text as status,
+            cd.payout,
+            cd.cost,
+            cd.country,
+            cd.region,
+            cd.city,
+            cd.ip::text as ip,
+            cd.visitor_id,
+            cd.os,
+            cd.device_type,
+            cd.isp,
+            cd.is_bot,
+            cd.is_using_proxy,
+            cd.sub_id_1,
+            cd.sub_id_2,
+            cd.sub_id_3,
+            cd.sub_id_4,
+            cd.sub_id_5,
+            cd.utm_source,
+            cd.utm_campaign,
+            cd.utm_creative,
+            cd.external_id,
+            cd.received_at::text as received_at
+        FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
+        LEFT JOIN offers o ON o.id = cd.offer_id
+        LEFT JOIN landings l ON l.id = cd.landing_id
+        WHERE {where_sql}
+        ORDER BY cd.received_at DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    
+    result = db.execute(query, params)
+    rows = result.fetchall()
+    
+    # Get total count
+    count_query = text(f"""
+        SELECT COUNT(*) 
+        FROM conversions_data cd
+        WHERE {where_sql}
+    """)
+    count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
+    total = db.execute(count_query, count_params).scalar()
+    
+    return {
+        "items": [dict(row._mapping) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+# ====== Filter Options for Dropdowns ======
+
+@router.get("/filter-options")
+async def get_filter_options(db: Session = Depends(get_db)):
+    """Get unique values for filter dropdowns."""
+    
+    # Countries
+    countries = db.execute(text("""
+        SELECT DISTINCT country FROM conversions_data 
+        WHERE country IS NOT NULL 
+        ORDER BY country
+    """)).fetchall()
+    
+    # Campaigns
+    campaigns = db.execute(text("""
+        SELECT id, name FROM campaigns ORDER BY name
+    """)).fetchall()
+    
+    # Offers
+    offers = db.execute(text("""
+        SELECT id, name FROM offers ORDER BY name
+    """)).fetchall()
+    
+    # Landings
+    landings = db.execute(text("""
+        SELECT id, name FROM landings ORDER BY name
+    """)).fetchall()
+    
+    # Device types
+    device_types = db.execute(text("""
+        SELECT DISTINCT device_type FROM conversions_data 
+        WHERE device_type IS NOT NULL 
+        ORDER BY device_type
+    """)).fetchall()
+    
+    # OS
+    os_list = db.execute(text("""
+        SELECT DISTINCT os FROM conversions_data 
+        WHERE os IS NOT NULL 
+        ORDER BY os
+    """)).fetchall()
+    
+    return {
+        "countries": [r.country for r in countries],
+        "campaigns": [{"id": r.id, "name": r.name} for r in campaigns],
+        "offers": [{"id": r.id, "name": r.name} for r in offers],
+        "landings": [{"id": r.id, "name": r.name} for r in landings],
+        "device_types": [r.device_type for r in device_types],
+        "os": [r.os for r in os_list],
+        "statuses": ["lead", "sale", "upsale", "rejected", "hold", "trash"]
     }

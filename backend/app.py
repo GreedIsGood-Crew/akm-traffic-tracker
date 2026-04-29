@@ -54,7 +54,7 @@ async def favicon():
 ###############################################
 
 
-ALLOWED_PAGES = {"auth", "dashboard", "editor"}
+ALLOWED_PAGES = {"auth", "dashboard", "editor", "groups"}
 
 
 from typing import Optional
@@ -69,6 +69,7 @@ from app_pages.campaigns import router as campaign_router
 from app_pages.dashboard import router as dashboard_router
 from app_pages.reports import router as reports_router  # Импортируем router
 from app_pages.landings import router as landings_router  # Импортируем router
+from app_pages.groups import router as groups_router  # Импортируем router
 
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(offers_router, prefix="/api/offers", tags=["Offers"])
@@ -87,6 +88,7 @@ app.include_router(affiliate_router, prefix="/api/affiliate-networks", tags=["Af
 app.include_router(campaign_router, prefix="/api/campaigns", tags=["Campaigns"])
 
 app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
+app.include_router(groups_router, prefix="/api/groups", tags=["Groups"])
 
 
 # Router

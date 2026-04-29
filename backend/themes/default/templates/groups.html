@@ -1,0 +1,285 @@
+{% raw %}
+<script type="text/x-template" id="groups-template">
+    <v-container fluid>
+        <h2>Groups</h2>
+        
+        <!-- Toolbar -->
+        <v-row dense class="mt-4" align="center">
+            <v-col cols="12" md="3">
+                <v-select
+                    v-model="filterType"
+                    :items="typeOptions"
+                    label="Filter by Type"
+                    outlined
+                    dense
+                    clearable
+                    @change="loadGroups"
+                ></v-select>
+            </v-col>
+            <v-col cols="12" md="3">
+                <v-text-field
+                    v-model="search"
+                    label="Search"
+                    prepend-icon="mdi-magnify"
+                    outlined
+                    dense
+                    clearable
+                ></v-text-field>
+            </v-col>
+            <v-spacer></v-spacer>
+            <v-col cols="12" md="2">
+                <v-btn color="primary" @click="openCreateDialog" block>
+                    <v-icon left>mdi-plus</v-icon>
+                    New Group
+                </v-btn>
+            </v-col>
+        </v-row>
+
+        <!-- Groups Table -->
+        <v-row dense class="mt-4">
+            <v-col>
+                <v-card>
+                    <v-data-table
+                        :headers="headers"
+                        :items="filteredGroups"
+                        :loading="loading"
+                        :items-per-page="25"
+                        class="elevation-1"
+                    >
+                        <template v-slot:item.color="{ item }">
+                            <v-chip :color="item.color" small dark>
+                                {{ item.color }}
+                            </v-chip>
+                        </template>
+                        <template v-slot:item.type="{ item }">
+                            <v-chip :color="getTypeColor(item.type)" small outlined>
+                                {{ item.type }}
+                            </v-chip>
+                        </template>
+                        <template v-slot:item.items_count="{ item }">
+                            <strong>{{ item.items_count }}</strong>
+                        </template>
+                        <template v-slot:item.actions="{ item }">
+                            <v-btn icon small @click="editGroup(item)">
+                                <v-icon small>mdi-pencil</v-icon>
+                            </v-btn>
+                            <v-btn icon small color="error" @click="confirmDelete(item)">
+                                <v-icon small>mdi-delete</v-icon>
+                            </v-btn>
+                        </template>
+                    </v-data-table>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Create/Edit Dialog -->
+        <v-dialog v-model="dialog" max-width="500px">
+            <v-card>
+                <v-card-title>
+                    {{ editMode ? 'Edit Group' : 'Create Group' }}
+                </v-card-title>
+                <v-card-text>
+                    <v-text-field
+                        v-model="form.name"
+                        label="Name *"
+                        outlined
+                        dense
+                        :rules="[v => !!v || 'Name is required']"
+                    ></v-text-field>
+                    <v-select
+                        v-model="form.type"
+                        :items="typeOptions"
+                        label="Type *"
+                        outlined
+                        dense
+                    ></v-select>
+                    <v-text-field
+                        v-model="form.color"
+                        label="Color"
+                        outlined
+                        dense
+                        hint="Hex color, e.g. #6366f1"
+                    >
+                        <template v-slot:append>
+                            <v-menu offset-y>
+                                <template v-slot:activator="{ on }">
+                                    <v-btn :color="form.color" small v-on="on" style="min-width: 30px;"></v-btn>
+                                </template>
+                                <v-color-picker v-model="form.color" hide-inputs></v-color-picker>
+                            </v-menu>
+                        </template>
+                    </v-text-field>
+                    <v-textarea
+                        v-model="form.description"
+                        label="Description"
+                        outlined
+                        dense
+                        rows="3"
+                    ></v-textarea>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn text @click="dialog = false">Cancel</v-btn>
+                    <v-btn color="primary" @click="saveGroup" :loading="saving">
+                        {{ editMode ? 'Update' : 'Create' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Delete Confirmation -->
+        <v-dialog v-model="deleteDialog" max-width="400px">
+            <v-card>
+                <v-card-title>Delete Group</v-card-title>
+                <v-card-text>
+                    Are you sure you want to delete "{{ groupToDelete?.name }}"?
+                    <br><br>
+                    <strong>{{ groupToDelete?.items_count }}</strong> items will be unlinked from this group.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn text @click="deleteDialog = false">Cancel</v-btn>
+                    <v-btn color="error" @click="deleteGroup" :loading="deleting">Delete</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+    </v-container>
+</script>
+
+<script type="application/javascript">
+    Vue.component('groups-component', {
+        template: '#groups-template',
+        data() {
+            return {
+                loading: false,
+                saving: false,
+                deleting: false,
+                groups: [],
+                search: '',
+                filterType: null,
+                dialog: false,
+                deleteDialog: false,
+                editMode: false,
+                groupToDelete: null,
+                form: {
+                    id: null,
+                    name: '',
+                    type: 'campaign',
+                    color: '#6366f1',
+                    description: ''
+                },
+                headers: [
+                    { text: 'ID', value: 'id', width: '70px' },
+                    { text: 'Name', value: 'name' },
+                    { text: 'Type', value: 'type', width: '120px' },
+                    { text: 'Color', value: 'color', width: '100px' },
+                    { text: 'Items', value: 'items_count', width: '80px' },
+                    { text: 'Actions', value: 'actions', width: '120px', sortable: false }
+                ],
+                typeOptions: [
+                    { text: 'Campaign', value: 'campaign' },
+                    { text: 'Offer', value: 'offer' },
+                    { text: 'Landing', value: 'landing' },
+                    { text: 'Traffic Source', value: 'traffic_source' }
+                ]
+            }
+        },
+        computed: {
+            filteredGroups() {
+                if (!this.search) return this.groups;
+                const s = this.search.toLowerCase();
+                return this.groups.filter(g => 
+                    g.name.toLowerCase().includes(s) || 
+                    g.description?.toLowerCase().includes(s)
+                );
+            }
+        },
+        mounted() {
+            this.loadGroups();
+        },
+        methods: {
+            loadGroups() {
+                this.loading = true;
+                let url = '/backend/api/groups/';
+                if (this.filterType) url += `?type=${this.filterType}`;
+                
+                fetch(url)
+                    .then(res => res.json())
+                    .then(data => {
+                        this.groups = data;
+                        this.loading = false;
+                    })
+                    .catch(err => {
+                        console.error('Error loading groups:', err);
+                        this.loading = false;
+                    });
+            },
+            getTypeColor(type) {
+                const colors = { campaign: 'blue', offer: 'green', landing: 'purple', traffic_source: 'orange' };
+                return colors[type] || 'grey';
+            },
+            openCreateDialog() {
+                this.editMode = false;
+                this.form = { id: null, name: '', type: 'campaign', color: '#6366f1', description: '' };
+                this.dialog = true;
+            },
+            editGroup(group) {
+                this.editMode = true;
+                this.form = { ...group };
+                this.dialog = true;
+            },
+            saveGroup() {
+                if (!this.form.name) {
+                    this.$root.$emit('show-message', { type: 'error', text: 'Name is required' });
+                    return;
+                }
+                
+                this.saving = true;
+                const method = this.editMode ? 'PUT' : 'POST';
+                const url = this.editMode 
+                    ? `/backend/api/groups/${this.form.id}`
+                    : '/backend/api/groups/';
+                
+                fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.form)
+                })
+                .then(res => res.json())
+                .then(data => {
+                    this.saving = false;
+                    this.dialog = false;
+                    this.loadGroups();
+                    this.$root.$emit('show-message', { 
+                        type: 'success', 
+                        text: this.editMode ? 'Group updated' : 'Group created' 
+                    });
+                })
+                .catch(err => {
+                    this.saving = false;
+                    this.$root.$emit('show-message', { type: 'error', text: err.message });
+                });
+            },
+            confirmDelete(group) {
+                this.groupToDelete = group;
+                this.deleteDialog = true;
+            },
+            deleteGroup() {
+                this.deleting = true;
+                fetch(`/backend/api/groups/${this.groupToDelete.id}`, { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(() => {
+                        this.deleting = false;
+                        this.deleteDialog = false;
+                        this.loadGroups();
+                        this.$root.$emit('show-message', { type: 'success', text: 'Group deleted' });
+                    })
+                    .catch(err => {
+                        this.deleting = false;
+                        this.$root.$emit('show-message', { type: 'error', text: err.message });
+                    });
+            }
+        }
+    });
+</script>
+{% endraw %}
