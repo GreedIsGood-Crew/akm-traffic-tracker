@@ -19,6 +19,7 @@ class CampaignIn(BaseModel):
     redirect_mode: Literal['position', 'weight'] = 'position'
     traffic_source_id: Optional[int] = None
     domain_id: Optional[int] = None
+    group_id: Optional[int] = None
     notes: Optional[str] = None
     config: Optional[dict] = None
 

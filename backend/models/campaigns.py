@@ -32,6 +32,7 @@ class CampaignORM(Base):
     status = Column(SQLAEnum(CampaignStatus), nullable=False, default=CampaignStatus.active)
     redirect_mode = Column(SQLAEnum(RedirectMode), nullable=False, default=RedirectMode.position)
     domain_id = Column(Integer, ForeignKey("domains.id"), nullable=True)
+    group_id = Column(Integer, nullable=True)
     traffic_source_id = Column(Integer, ForeignKey("sources.id"), nullable=True)
     notes = Column(Text, nullable=True)
     config = Column(JSONB, nullable=True)

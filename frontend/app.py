@@ -271,15 +271,15 @@ async def save_click_to_db(meta: dict):
     pg = app.state.pg
 
     # допустимые поля из структуры таблицы conversions_data
+    # ВАЖНО: "status" НЕ включён - статус устанавливается ТОЛЬКО через postback!
     allowed_fields = {
         "click_id", "campaign_id", "offer_id", "landing_id", "ad_campaign_id",
-        "status", "external_id", "payout", "revenue", "profit", "currency",
+        "external_id", "payout", "revenue", "profit", "currency",
         "transaction_id", "country", "region", "city", "ip", "visitor_id",
         "sub_id_1", "sub_id_2", "sub_id_3", "sub_id_4", "sub_id_5",
         "sub_id_6", "sub_id_7", "sub_id_8", "sub_id_9", "sub_id_10",
         "utm_campaign", "utm_creative", "utm_source", "traffic_source_name",
-        "os", "isp", "is_using_proxy", "is_bot", "device_type",
-        "cost"  # Money spent on traffic (from traffic source CPC parameter)
+        "os", "isp", "is_using_proxy", "is_bot", "device_type"
     }
 
     # фильтруем только допустимые поля
@@ -287,11 +287,9 @@ async def save_click_to_db(meta: dict):
 
     insert_data["received_at"] = datetime.utcnow()
 
-    # НЕ устанавливаем status при клике! 
-    # Конверсия записывается только через postback (/pb/{click_id}/{status}/{payout})
-    # status = NULL означает "просто клик, без конверсии"
-    if "status" in insert_data:
-        del insert_data["status"]
+    # НЕ устанавливаем status при записи клика!
+    # По Keitaro: click = просто визит без статуса
+    # Конверсия (status) устанавливается ТОЛЬКО через postback от партнерской сети
 
     columns = ", ".join(insert_data.keys())
     values_placeholders = ", ".join(

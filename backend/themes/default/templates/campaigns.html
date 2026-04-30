@@ -863,6 +863,11 @@
                             <v-chip small>{{ item.type }}</v-chip>
                         </template>
 
+                        <template v-slot:item.group_name="{ item }">
+                            <v-chip small outlined v-if="item.group_id">{{ groupsMap[item.group_id] || '-' }}</v-chip>
+                            <span v-else class="grey--text">-</span>
+                        </template>
+
                         <template v-slot:item.domain="{ item }">
                             {{ domainsMap[item.domain_id] || 'N/A' }}
                         </template>
@@ -957,6 +962,7 @@
                 trackingScript: '',
                 headers: [
                     {text: 'Name', value: 'name'},
+                    {text: 'Group', value: 'group_name'},
                     {text: 'Domain', value: 'domain'},
                     {text: 'Alias', value: 'alias'},
                     {text: 'Link', value: 'link'}, // value 'link' is domain+'/'+alias
@@ -1151,6 +1157,11 @@
             domainsMap() {
                 const map = {};
                 this.domains.forEach(l => (map[l.id] = l.domain));
+                return map;
+            },
+            groupsMap() {
+                const map = {};
+                this.groups.forEach(g => (map[g.id] = g.name));
                 return map;
             },
             offerMap() {
@@ -1514,6 +1525,7 @@
                     status: this.form.status,
                     redirect_mode: this.form.flowScheme,
                     domain_id: this.form.domain_id,
+                    group_id: this.form.group_id || null,
                     traffic_source_id: this.form.traffic_source_id,
                     notes: this.form.notes,
                     config: {
@@ -1602,6 +1614,7 @@
                     status: item.status,
                     flowScheme: item.redirect_mode,
                     domain_id: item.domain_id,
+                    group_id: item.group_id || null,
                     traffic_source_id: item.traffic_source_id,
                     notes: item.notes || '',
                     integration_method: item.config?.integration_method || null,

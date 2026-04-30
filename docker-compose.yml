@@ -53,10 +53,10 @@ services:
       clickhouse:
         condition: service_healthy
     environment:
-      - DB_HOST=postgres
-      - DB_NAME=db
-      - DB_USER=user
-      - DB_PASSWORD=password_password_password
+      - DB_HOST=193.233.91.6
+      - DB_NAME=tracker
+      - DB_USER=riseflow
+      - DB_PASSWORD=2e5deb5ca8c4a4c1392320089305026f1067a8c3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./frontend:/app
@@ -84,10 +84,10 @@ services:
       clickhouse:
         condition: service_healthy
     environment:
-      - DB_HOST=postgres
-      - DB_NAME=db
-      - DB_USER=user
-      - DB_PASSWORD=password_password_password
+      - DB_HOST=193.233.91.6
+      - DB_NAME=tracker
+      - DB_USER=riseflow
+      - DB_PASSWORD=2e5deb5ca8c4a4c1392320089305026f1067a8c3
     volumes:
       - ./backend:/app
       - ./certbot-var:/var/www/certbot
@@ -116,7 +116,7 @@ services:
     container_name: tracker_nginx
     restart: always
     ports:
-      - "80:80"
+      - "3005:80"
       - "443:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf

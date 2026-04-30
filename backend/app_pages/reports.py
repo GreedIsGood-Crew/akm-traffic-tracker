@@ -581,11 +581,11 @@ async def get_clicks_log(
         params["campaign"] = f"%{campaign}%"
     
     if date_from:
-        where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
+        where_clauses.append("cd.received_at >= :date_from::date")
         params["date_from"] = date_from
     
     if date_to:
-        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        where_clauses.append("cd.received_at <= :date_to::date + INTERVAL '1 day'")
         params["date_to"] = date_to
     
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -635,65 +635,42 @@ async def get_clicks_log(
     }
 
 
-# ====== Conversions Log Endpoint (Keitaro-style) ======
+# ====== Conversions Log Endpoint ======
 
 @router.get("/conversions-log")
 async def get_conversions_log(
     click_id: Optional[str] = Query(None, description="Search by click_id"),
-    campaign_id: Optional[int] = Query(None, description="Filter by campaign"),
-    offer_id: Optional[int] = Query(None, description="Filter by offer"),
+    campaign: Optional[str] = Query(None, description="Search by campaign name"),
     status: Optional[str] = Query(None, description="Filter by status: lead, sale, upsale, rejected, hold, trash"),
-    external_id: Optional[str] = Query(None, description="Search by external_id"),
-    sub_id_1: Optional[str] = Query(None, description="Filter by sub_id_1"),
-    country: Optional[str] = Query(None, description="Filter by country"),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     limit: int = Query(100, le=1000),
     offset: int = Query(0),
     db: Session = Depends(get_db)
 ):
-    """
-    Get conversions log (Keitaro-style).
-    Shows only records WITH conversion status (not regular clicks).
-    """
+    """Get conversions log - only records where status IS NOT NULL."""
     
-    where_clauses = ["cd.status IS NOT NULL"]  # Only conversions!
+    where_clauses = ["cd.status IS NOT NULL"]  # Only conversions, not clicks
     params = {"limit": limit, "offset": offset}
     
     if click_id:
         where_clauses.append("cd.click_id ILIKE :click_id")
         params["click_id"] = f"%{click_id}%"
     
-    if campaign_id:
-        where_clauses.append("cd.campaign_id = :campaign_id")
-        params["campaign_id"] = campaign_id
-    
-    if offer_id:
-        where_clauses.append("cd.offer_id = :offer_id")
-        params["offer_id"] = offer_id
+    if campaign:
+        where_clauses.append("c.name ILIKE :campaign")
+        params["campaign"] = f"%{campaign}%"
     
     if status:
-        where_clauses.append("cd.status::text = :status")
+        where_clauses.append("cd.status = :status::conversion_status")
         params["status"] = status
-    
-    if external_id:
-        where_clauses.append("cd.external_id ILIKE :external_id")
-        params["external_id"] = f"%{external_id}%"
-    
-    if sub_id_1:
-        where_clauses.append("cd.sub_id_1 = :sub_id_1")
-        params["sub_id_1"] = sub_id_1
-    
-    if country:
-        where_clauses.append("cd.country = :country")
-        params["country"] = country
     
     if date_from:
         where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
         params["date_from"] = date_from
     
     if date_to:
-        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        where_clauses.append("cd.received_at <= CAST(:date_to AS DATE) + INTERVAL '1 day'")
         params["date_to"] = date_to
     
     where_sql = " AND ".join(where_clauses)
@@ -706,25 +683,15 @@ async def get_conversions_log(
             c.name as campaign_name,
             cd.offer_id,
             o.name as offer_name,
+            cd.country,
+            cd.ip,
             cd.status::text as status,
             cd.payout,
             cd.revenue,
-            cd.profit,
-            cd.currency,
-            cd.external_id,
             cd.transaction_id,
-            cd.country,
-            cd.region,
-            cd.city,
-            cd.ip::text as ip,
-            cd.visitor_id,
             cd.sub_id_1,
             cd.sub_id_2,
             cd.sub_id_3,
-            cd.sub_id_4,
-            cd.sub_id_5,
-            cd.os,
-            cd.device_type,
             cd.received_at::text as received_at
         FROM conversions_data cd
         LEFT JOIN campaigns c ON c.id = cd.campaign_id
@@ -741,59 +708,48 @@ async def get_conversions_log(
     count_query = text(f"""
         SELECT COUNT(*) 
         FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
         WHERE {where_sql}
     """)
     count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
     total = db.execute(count_query, count_params).scalar()
     
-    # Get status counts
-    status_query = text("""
+    # Get stats by status
+    stats_query = text("""
         SELECT 
-            cd.status::text as status,
-            COUNT(*) as count
-        FROM conversions_data cd
-        WHERE cd.status IS NOT NULL
-        GROUP BY cd.status
+            status::text as status,
+            COUNT(*) as count,
+            COALESCE(SUM(payout), 0) as total_payout
+        FROM conversions_data
+        WHERE status IS NOT NULL
+        GROUP BY status
     """)
-    status_counts = {row.status: row.count for row in db.execute(status_query).fetchall()}
+    stats_result = db.execute(stats_query)
+    stats = {row.status: {"count": row.count, "payout": float(row.total_payout)} for row in stats_result.fetchall()}
     
     return {
         "items": [dict(row._mapping) for row in rows],
         "total": total,
         "limit": limit,
         "offset": offset,
-        "status_counts": status_counts
+        "stats": stats
     }
 
 
-# ====== Full Clicks Log Endpoint (Keitaro-style) ======
+# ====== Clicks Log Full (all clicks) ======
 
 @router.get("/clicks-log-full")
 async def get_clicks_log_full(
     click_id: Optional[str] = Query(None, description="Search by click_id"),
-    campaign_id: Optional[int] = Query(None, description="Filter by campaign"),
-    offer_id: Optional[int] = Query(None, description="Filter by offer"),
-    landing_id: Optional[int] = Query(None, description="Filter by landing"),
+    campaign: Optional[str] = Query(None, description="Search by campaign name"),
     country: Optional[str] = Query(None, description="Filter by country"),
-    city: Optional[str] = Query(None, description="Filter by city"),
-    os: Optional[str] = Query(None, description="Filter by OS"),
-    device_type: Optional[str] = Query(None, description="Filter by device type"),
-    is_bot: Optional[bool] = Query(None, description="Filter bots"),
-    is_using_proxy: Optional[bool] = Query(None, description="Filter proxy"),
-    sub_id_1: Optional[str] = Query(None, description="Filter by sub_id_1"),
-    sub_id_2: Optional[str] = Query(None, description="Filter by sub_id_2"),
-    visitor_id: Optional[str] = Query(None, description="Filter by visitor_id"),
-    ip: Optional[str] = Query(None, description="Filter by IP"),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     limit: int = Query(100, le=1000),
     offset: int = Query(0),
     db: Session = Depends(get_db)
 ):
-    """
-    Get full clicks log (Keitaro-style).
-    Shows ALL records including clicks without conversions.
-    """
+    """Get ALL clicks log (status can be NULL or any value)."""
     
     where_clauses = ["1=1"]
     params = {"limit": limit, "offset": offset}
@@ -802,64 +758,20 @@ async def get_clicks_log_full(
         where_clauses.append("cd.click_id ILIKE :click_id")
         params["click_id"] = f"%{click_id}%"
     
-    if campaign_id:
-        where_clauses.append("cd.campaign_id = :campaign_id")
-        params["campaign_id"] = campaign_id
-    
-    if offer_id:
-        where_clauses.append("cd.offer_id = :offer_id")
-        params["offer_id"] = offer_id
-    
-    if landing_id:
-        where_clauses.append("cd.landing_id = :landing_id")
-        params["landing_id"] = landing_id
+    if campaign:
+        where_clauses.append("c.name ILIKE :campaign")
+        params["campaign"] = f"%{campaign}%"
     
     if country:
         where_clauses.append("cd.country = :country")
         params["country"] = country
-    
-    if city:
-        where_clauses.append("cd.city ILIKE :city")
-        params["city"] = f"%{city}%"
-    
-    if os:
-        where_clauses.append("cd.os ILIKE :os")
-        params["os"] = f"%{os}%"
-    
-    if device_type:
-        where_clauses.append("cd.device_type = :device_type")
-        params["device_type"] = device_type
-    
-    if is_bot is not None:
-        where_clauses.append("cd.is_bot = :is_bot")
-        params["is_bot"] = is_bot
-    
-    if is_using_proxy is not None:
-        where_clauses.append("cd.is_using_proxy = :is_using_proxy")
-        params["is_using_proxy"] = is_using_proxy
-    
-    if sub_id_1:
-        where_clauses.append("cd.sub_id_1 = :sub_id_1")
-        params["sub_id_1"] = sub_id_1
-    
-    if sub_id_2:
-        where_clauses.append("cd.sub_id_2 = :sub_id_2")
-        params["sub_id_2"] = sub_id_2
-    
-    if visitor_id:
-        where_clauses.append("cd.visitor_id = :visitor_id")
-        params["visitor_id"] = visitor_id
-    
-    if ip:
-        where_clauses.append("cd.ip::text ILIKE :ip")
-        params["ip"] = f"%{ip}%"
     
     if date_from:
         where_clauses.append("cd.received_at >= CAST(:date_from AS DATE)")
         params["date_from"] = date_from
     
     if date_to:
-        where_clauses.append("cd.received_at < CAST(:date_to AS DATE) + INTERVAL '1 day'")
+        where_clauses.append("cd.received_at <= CAST(:date_to AS DATE) + INTERVAL '1 day'")
         params["date_to"] = date_to
     
     where_sql = " AND ".join(where_clauses)
@@ -873,10 +785,6 @@ async def get_clicks_log_full(
             cd.offer_id,
             o.name as offer_name,
             cd.landing_id,
-            l.name as landing_name,
-            cd.status::text as status,
-            cd.payout,
-            cd.cost,
             cd.country,
             cd.region,
             cd.city,
@@ -884,9 +792,10 @@ async def get_clicks_log_full(
             cd.visitor_id,
             cd.os,
             cd.device_type,
-            cd.isp,
             cd.is_bot,
             cd.is_using_proxy,
+            cd.status::text as status,
+            cd.payout,
             cd.sub_id_1,
             cd.sub_id_2,
             cd.sub_id_3,
@@ -895,12 +804,10 @@ async def get_clicks_log_full(
             cd.utm_source,
             cd.utm_campaign,
             cd.utm_creative,
-            cd.external_id,
             cd.received_at::text as received_at
         FROM conversions_data cd
         LEFT JOIN campaigns c ON c.id = cd.campaign_id
         LEFT JOIN offers o ON o.id = cd.offer_id
-        LEFT JOIN landings l ON l.id = cd.landing_id
         WHERE {where_sql}
         ORDER BY cd.received_at DESC
         LIMIT :limit OFFSET :offset
@@ -913,6 +820,7 @@ async def get_clicks_log_full(
     count_query = text(f"""
         SELECT COUNT(*) 
         FROM conversions_data cd
+        LEFT JOIN campaigns c ON c.id = cd.campaign_id
         WHERE {where_sql}
     """)
     count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
@@ -926,54 +834,29 @@ async def get_clicks_log_full(
     }
 
 
-# ====== Filter Options for Dropdowns ======
+# ====== Filter Options ======
 
 @router.get("/filter-options")
 async def get_filter_options(db: Session = Depends(get_db)):
-    """Get unique values for filter dropdowns."""
+    """Get filter options for dropdowns."""
     
     # Countries
-    countries = db.execute(text("""
+    countries_query = text("""
         SELECT DISTINCT country FROM conversions_data 
         WHERE country IS NOT NULL 
         ORDER BY country
-    """)).fetchall()
+    """)
+    countries = [row.country for row in db.execute(countries_query).fetchall()]
     
     # Campaigns
-    campaigns = db.execute(text("""
-        SELECT id, name FROM campaigns ORDER BY name
-    """)).fetchall()
+    campaigns_query = text("SELECT id, name FROM campaigns ORDER BY name")
+    campaigns = [{"id": row.id, "name": row.name} for row in db.execute(campaigns_query).fetchall()]
     
-    # Offers
-    offers = db.execute(text("""
-        SELECT id, name FROM offers ORDER BY name
-    """)).fetchall()
-    
-    # Landings
-    landings = db.execute(text("""
-        SELECT id, name FROM landings ORDER BY name
-    """)).fetchall()
-    
-    # Device types
-    device_types = db.execute(text("""
-        SELECT DISTINCT device_type FROM conversions_data 
-        WHERE device_type IS NOT NULL 
-        ORDER BY device_type
-    """)).fetchall()
-    
-    # OS
-    os_list = db.execute(text("""
-        SELECT DISTINCT os FROM conversions_data 
-        WHERE os IS NOT NULL 
-        ORDER BY os
-    """)).fetchall()
+    # Statuses
+    statuses = ["lead", "sale", "upsale", "rejected", "hold", "trash"]
     
     return {
-        "countries": [r.country for r in countries],
-        "campaigns": [{"id": r.id, "name": r.name} for r in campaigns],
-        "offers": [{"id": r.id, "name": r.name} for r in offers],
-        "landings": [{"id": r.id, "name": r.name} for r in landings],
-        "device_types": [r.device_type for r in device_types],
-        "os": [r.os for r in os_list],
-        "statuses": ["lead", "sale", "upsale", "rejected", "hold", "trash"]
+        "countries": countries,
+        "campaigns": campaigns,
+        "statuses": statuses
     }

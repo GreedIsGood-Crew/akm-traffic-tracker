@@ -1,303 +1,240 @@
 {% raw %}
 <script type="text/x-template" id="clicks-log-template">
     <v-container fluid>
-        <v-row align="center" class="mb-4">
-            <v-col>
-                <h2>
-                    <v-icon left>mdi-mouse</v-icon>
-                    Clicks Log
-                </h2>
-                <div class="text-caption grey--text">
-                    Total: {{ total.toLocaleString() }} clicks
-                </div>
-            </v-col>
-            <v-col cols="auto">
-                <v-btn color="primary" @click="loadData" :loading="loading">
-                    <v-icon left>mdi-refresh</v-icon>
-                    Refresh
-                </v-btn>
-                <v-btn color="success" @click="exportCSV" class="ml-2" outlined>
-                    <v-icon left>mdi-download</v-icon>
-                    Export CSV
-                </v-btn>
+        <h2>Clicks Log</h2>
+
+        <!-- Stats Cards -->
+        <v-row dense class="mt-4">
+            <v-col cols="12" sm="6" md="3">
+                <v-card class="pa-3" color="primary" dark>
+                    <v-card-text class="text-center">
+                        <div class="text-subtitle-1">Total Clicks</div>
+                        <div class="text-h5 font-weight-bold mt-1">{{ total }}</div>
+                    </v-card-text>
+                </v-card>
             </v-col>
         </v-row>
 
-        <!-- Filters Card -->
-        <v-card class="mb-4">
-            <v-card-title class="py-2">
-                <v-icon left small>mdi-filter</v-icon>
-                Filters
-                <v-spacer></v-spacer>
-                <v-btn text small color="primary" @click="clearFilters">
-                    Clear All
-                </v-btn>
-            </v-card-title>
-            <v-card-text>
-                <v-row dense>
-                    <!-- Date Range -->
-                    <v-col cols="12" md="2">
-                        <v-menu
-                            v-model="dateMenu"
-                            :close-on-content-click="false"
-                            transition="scale-transition"
-                            offset-y
-                            min-width="auto"
-                        >
-                            <template v-slot:activator="{ on, attrs }">
-                                <v-text-field
-                                    v-model="dateRangeText"
-                                    label="Date Range"
-                                    prepend-icon="mdi-calendar"
-                                    readonly
-                                    outlined
-                                    dense
-                                    v-bind="attrs"
-                                    v-on="on"
-                                ></v-text-field>
-                            </template>
-                            <v-date-picker
-                                v-model="filters.dateRange"
-                                range
-                                @change="dateMenu = false"
-                            ></v-date-picker>
-                        </v-menu>
-                    </v-col>
-
-                    <!-- Click ID -->
-                    <v-col cols="12" md="2">
-                        <v-text-field
-                            v-model="filters.click_id"
-                            label="Click ID"
-                            prepend-icon="mdi-identifier"
-                            outlined
-                            dense
-                            clearable
-                        ></v-text-field>
-                    </v-col>
-
-                    <!-- Campaign -->
-                    <v-col cols="12" md="2">
-                        <v-select
-                            v-model="filters.campaign_id"
-                            :items="filterOptions.campaigns"
-                            item-text="name"
-                            item-value="id"
-                            label="Campaign"
-                            prepend-icon="mdi-bullhorn"
-                            outlined
-                            dense
-                            clearable
-                        ></v-select>
-                    </v-col>
-
-                    <!-- Offer -->
-                    <v-col cols="12" md="2">
-                        <v-select
-                            v-model="filters.offer_id"
-                            :items="filterOptions.offers"
-                            item-text="name"
-                            item-value="id"
-                            label="Offer"
-                            prepend-icon="mdi-tag"
-                            outlined
-                            dense
-                            clearable
-                        ></v-select>
-                    </v-col>
-
-                    <!-- Country -->
-                    <v-col cols="12" md="2">
-                        <v-autocomplete
-                            v-model="filters.country"
-                            :items="filterOptions.countries"
-                            label="Country"
-                            prepend-icon="mdi-earth"
-                            outlined
-                            dense
-                            clearable
-                        ></v-autocomplete>
-                    </v-col>
-
-                    <!-- Apply Button -->
-                    <v-col cols="12" md="2">
-                        <v-btn color="primary" block @click="loadData">
-                            <v-icon left>mdi-magnify</v-icon>
-                            Apply
-                        </v-btn>
-                    </v-col>
-                </v-row>
-
-                <!-- Advanced Filters (expandable) -->
-                <v-expansion-panels flat class="mt-2">
-                    <v-expansion-panel>
-                        <v-expansion-panel-header class="py-0">
-                            <span class="text-caption">Advanced Filters</span>
-                        </v-expansion-panel-header>
-                        <v-expansion-panel-content>
-                            <v-row dense>
-                                <v-col cols="12" md="2">
-                                    <v-select
-                                        v-model="filters.device_type"
-                                        :items="filterOptions.device_types"
-                                        label="Device Type"
-                                        outlined
-                                        dense
-                                        clearable
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-autocomplete
-                                        v-model="filters.os"
-                                        :items="filterOptions.os"
-                                        label="OS"
-                                        outlined
-                                        dense
-                                        clearable
-                                    ></v-autocomplete>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-text-field
-                                        v-model="filters.ip"
-                                        label="IP Address"
-                                        outlined
-                                        dense
-                                        clearable
-                                    ></v-text-field>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-text-field
-                                        v-model="filters.visitor_id"
-                                        label="Visitor ID"
-                                        outlined
-                                        dense
-                                        clearable
-                                    ></v-text-field>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-text-field
-                                        v-model="filters.sub_id_1"
-                                        label="Sub ID 1"
-                                        outlined
-                                        dense
-                                        clearable
-                                    ></v-text-field>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-checkbox
-                                        v-model="filters.is_bot"
-                                        label="Show Bots Only"
-                                        dense
-                                    ></v-checkbox>
-                                </v-col>
-                            </v-row>
-                        </v-expansion-panel-content>
-                    </v-expansion-panel>
-                </v-expansion-panels>
-            </v-card-text>
+        <!-- Filters -->
+        <v-card class="mt-4 pa-4">
+            <v-row dense align="center">
+                <v-col cols="12" md="3">
+                    <v-text-field
+                        v-model="filters.click_id"
+                        label="Click ID"
+                        prepend-icon="mdi-identifier"
+                        dense
+                        outlined
+                        clearable
+                        @keyup.enter="loadData"
+                    ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field
+                        v-model="filters.campaign"
+                        label="Campaign"
+                        prepend-icon="mdi-bullhorn"
+                        dense
+                        outlined
+                        clearable
+                        @keyup.enter="loadData"
+                    ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="2">
+                    <v-select
+                        v-model="filters.country"
+                        :items="countries"
+                        label="Country"
+                        prepend-icon="mdi-earth"
+                        dense
+                        outlined
+                        clearable
+                    ></v-select>
+                </v-col>
+                <v-col cols="12" md="2">
+                    <v-menu
+                        v-model="dateFromMenu"
+                        :close-on-content-click="false"
+                        transition="scale-transition"
+                        offset-y
+                        min-width="auto"
+                    >
+                        <template v-slot:activator="{ on, attrs }">
+                            <v-text-field
+                                v-model="filters.date_from"
+                                label="Date From"
+                                prepend-icon="mdi-calendar"
+                                readonly
+                                dense
+                                outlined
+                                clearable
+                                v-bind="attrs"
+                                v-on="on"
+                            ></v-text-field>
+                        </template>
+                        <v-date-picker v-model="filters.date_from" @input="dateFromMenu = false"></v-date-picker>
+                    </v-menu>
+                </v-col>
+                <v-col cols="12" md="2">
+                    <v-menu
+                        v-model="dateToMenu"
+                        :close-on-content-click="false"
+                        transition="scale-transition"
+                        offset-y
+                        min-width="auto"
+                    >
+                        <template v-slot:activator="{ on, attrs }">
+                            <v-text-field
+                                v-model="filters.date_to"
+                                label="Date To"
+                                prepend-icon="mdi-calendar"
+                                readonly
+                                dense
+                                outlined
+                                clearable
+                                v-bind="attrs"
+                                v-on="on"
+                            ></v-text-field>
+                        </template>
+                        <v-date-picker v-model="filters.date_to" @input="dateToMenu = false"></v-date-picker>
+                    </v-menu>
+                </v-col>
+            </v-row>
+            <v-row dense>
+                <v-col cols="12" class="text-right">
+                    <v-btn color="primary" @click="loadData" :loading="loading">
+                        <v-icon left>mdi-magnify</v-icon>
+                        Search
+                    </v-btn>
+                    <v-btn text @click="resetFilters" class="ml-2">
+                        <v-icon left>mdi-refresh</v-icon>
+                        Reset
+                    </v-btn>
+                    <v-btn text color="success" @click="exportCSV" class="ml-2">
+                        <v-icon left>mdi-download</v-icon>
+                        Export CSV
+                    </v-btn>
+                </v-col>
+            </v-row>
         </v-card>
 
         <!-- Column Selector -->
-        <v-card class="mb-4">
-            <v-card-title class="py-2">
-                <v-icon left small>mdi-table-column</v-icon>
-                Columns
-            </v-card-title>
-            <v-card-text class="py-2">
-                <v-chip-group v-model="selectedColumns" multiple column>
-                    <v-chip 
-                        v-for="col in allColumns" 
-                        :key="col.value" 
-                        :value="col.value"
-                        filter
-                        outlined
-                        small
-                    >
-                        {{ col.text }}
-                    </v-chip>
-                </v-chip-group>
-            </v-card-text>
+        <v-card class="mt-4 pa-2">
+            <v-btn text small @click="showColumnsDialog = true">
+                <v-icon left small>mdi-view-column</v-icon>
+                Columns ({{ visibleColumns.length }}/{{ allColumns.length }})
+            </v-btn>
         </v-card>
 
         <!-- Data Table -->
-        <v-card>
+        <v-card class="mt-4">
             <v-data-table
-                :headers="visibleHeaders"
-                :items="clicks"
+                :headers="tableHeaders"
+                :items="items"
                 :loading="loading"
-                :options.sync="tableOptions"
                 :server-items-length="total"
-                :items-per-page="100"
-                :footer-props="{
-                    'items-per-page-options': [25, 50, 100, 250, 500]
-                }"
+                :options.sync="options"
+                :footer-props="{ 'items-per-page-options': [25, 50, 100, 200] }"
                 class="elevation-1"
                 dense
-                @update:options="onTableUpdate"
+                @update:options="onOptionsUpdate"
             >
-                <!-- Click ID -->
+                <!-- Click ID column - copyable -->
                 <template v-slot:item.click_id="{ item }">
-                    <code class="text-caption" style="cursor: pointer;" @click="copyToClipboard(item.click_id)">
-                        {{ item.click_id }}
-                    </code>
+                    <v-tooltip bottom>
+                        <template v-slot:activator="{ on, attrs }">
+                            <span 
+                                v-bind="attrs" 
+                                v-on="on" 
+                                style="cursor: pointer; font-family: monospace; font-size: 11px;"
+                                @click="copyToClipboard(item.click_id)"
+                            >
+                                {{ item.click_id ? item.click_id.substring(0, 8) + '...' : '-' }}
+                            </span>
+                        </template>
+                        <span>{{ item.click_id }}<br>Click to copy</span>
+                    </v-tooltip>
                 </template>
 
-                <!-- Status -->
+                <!-- Status with color -->
                 <template v-slot:item.status="{ item }">
                     <v-chip 
                         v-if="item.status" 
                         :color="getStatusColor(item.status)" 
-                        x-small 
-                        label
+                        small 
+                        dark
                     >
                         {{ item.status }}
                     </v-chip>
-                    <span v-else class="grey--text">—</span>
+                    <span v-else class="grey--text">-</span>
                 </template>
 
-                <!-- Payout -->
+                <!-- Country with flag -->
+                <template v-slot:item.country="{ item }">
+                    <span v-if="item.country">
+                        {{ item.country }}
+                    </span>
+                    <span v-else class="grey--text">-</span>
+                </template>
+
+                <!-- Payout formatted -->
                 <template v-slot:item.payout="{ item }">
-                    <span v-if="item.payout" class="green--text">
-                        ${{ parseFloat(item.payout || 0).toFixed(2) }}
+                    <span v-if="item.payout" class="green--text font-weight-medium">
+                        ${{ parseFloat(item.payout).toFixed(2) }}
                     </span>
-                    <span v-else class="grey--text">—</span>
-                </template>
-
-                <!-- Cost -->
-                <template v-slot:item.cost="{ item }">
-                    <span v-if="item.cost" class="red--text">
-                        ${{ parseFloat(item.cost || 0).toFixed(2) }}
-                    </span>
-                    <span v-else class="grey--text">—</span>
+                    <span v-else>-</span>
                 </template>
 
                 <!-- IP -->
                 <template v-slot:item.ip="{ item }">
-                    <code class="text-caption">{{ item.ip }}</code>
+                    <span style="font-family: monospace; font-size: 11px;">{{ item.ip || '-' }}</span>
                 </template>
 
-                <!-- Bot -->
+                <!-- Date formatted -->
+                <template v-slot:item.received_at="{ item }">
+                    {{ formatDate(item.received_at) }}
+                </template>
+
+                <!-- Bot indicator -->
                 <template v-slot:item.is_bot="{ item }">
                     <v-icon v-if="item.is_bot" color="error" small>mdi-robot</v-icon>
-                    <span v-else class="grey--text">—</span>
+                    <span v-else>-</span>
                 </template>
 
-                <!-- Proxy -->
+                <!-- Proxy indicator -->
                 <template v-slot:item.is_using_proxy="{ item }">
                     <v-icon v-if="item.is_using_proxy" color="warning" small>mdi-vpn</v-icon>
-                    <span v-else class="grey--text">—</span>
-                </template>
-
-                <!-- Time -->
-                <template v-slot:item.received_at="{ item }">
-                    <span class="text-caption">{{ formatDate(item.received_at) }}</span>
+                    <span v-else>-</span>
                 </template>
             </v-data-table>
         </v-card>
 
-        <!-- Snackbar for copy -->
-        <v-snackbar v-model="snackbar" :timeout="2000" color="success">
-            Copied to clipboard!
+        <!-- Columns Dialog -->
+        <v-dialog v-model="showColumnsDialog" max-width="500">
+            <v-card>
+                <v-card-title>Select Columns</v-card-title>
+                <v-card-text>
+                    <v-checkbox
+                        v-for="col in allColumns"
+                        :key="col.value"
+                        v-model="visibleColumns"
+                        :label="col.text"
+                        :value="col.value"
+                        dense
+                        hide-details
+                    ></v-checkbox>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn text @click="selectAllColumns">Select All</v-btn>
+                    <v-btn color="primary" @click="showColumnsDialog = false">OK</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Snackbar -->
+        <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="2000">
+            {{ snackbar.text }}
         </v-snackbar>
     </v-container>
 </script>
@@ -308,180 +245,179 @@ Vue.component('clicks-log-component', {
     data() {
         return {
             loading: false,
-            dateMenu: false,
-            snackbar: false,
-            clicks: [],
+            items: [],
             total: 0,
-            tableOptions: {
-                page: 1,
-                itemsPerPage: 100
-            },
             filters: {
-                dateRange: [
-                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
-                    new Date().toISOString().split('T')[0]
-                ],
                 click_id: '',
-                campaign_id: null,
-                offer_id: null,
-                country: null,
-                device_type: null,
-                os: null,
-                ip: '',
-                visitor_id: '',
-                sub_id_1: '',
-                is_bot: false
+                campaign: '',
+                country: '',
+                date_from: null,
+                date_to: null
             },
-            filterOptions: {
-                countries: [],
-                campaigns: [],
-                offers: [],
-                landings: [],
-                device_types: [],
-                os: []
+            dateFromMenu: false,
+            dateToMenu: false,
+            countries: [],
+            options: {
+                page: 1,
+                itemsPerPage: 50,
+                sortBy: [],
+                sortDesc: []
             },
+            showColumnsDialog: false,
             allColumns: [
+                { text: 'ID', value: 'id' },
                 { text: 'Click ID', value: 'click_id' },
-                { text: 'Time', value: 'received_at' },
                 { text: 'Campaign', value: 'campaign_name' },
                 { text: 'Offer', value: 'offer_name' },
-                { text: 'Landing', value: 'landing_name' },
-                { text: 'Status', value: 'status' },
-                { text: 'Payout', value: 'payout' },
-                { text: 'Cost', value: 'cost' },
                 { text: 'Country', value: 'country' },
+                { text: 'Region', value: 'region' },
                 { text: 'City', value: 'city' },
                 { text: 'IP', value: 'ip' },
+                { text: 'Visitor ID', value: 'visitor_id' },
                 { text: 'OS', value: 'os' },
                 { text: 'Device', value: 'device_type' },
-                { text: 'ISP', value: 'isp' },
                 { text: 'Bot', value: 'is_bot' },
                 { text: 'Proxy', value: 'is_using_proxy' },
+                { text: 'Status', value: 'status' },
+                { text: 'Payout', value: 'payout' },
                 { text: 'Sub ID 1', value: 'sub_id_1' },
                 { text: 'Sub ID 2', value: 'sub_id_2' },
-                { text: 'Visitor ID', value: 'visitor_id' },
+                { text: 'Sub ID 3', value: 'sub_id_3' },
                 { text: 'UTM Source', value: 'utm_source' },
-                { text: 'UTM Campaign', value: 'utm_campaign' }
+                { text: 'UTM Campaign', value: 'utm_campaign' },
+                { text: 'Date', value: 'received_at' }
             ],
-            selectedColumns: ['click_id', 'received_at', 'campaign_name', 'offer_name', 'status', 'payout', 'country', 'ip', 'device_type']
-        }
+            visibleColumns: ['id', 'click_id', 'campaign_name', 'country', 'ip', 'status', 'payout', 'received_at'],
+            snackbar: {
+                show: false,
+                text: '',
+                color: 'success'
+            }
+        };
     },
     computed: {
-        dateRangeText() {
-            return this.filters.dateRange.join(' ~ ');
-        },
-        visibleHeaders() {
-            return this.allColumns.filter(col => this.selectedColumns.includes(col.value));
+        tableHeaders() {
+            return this.allColumns.filter(col => this.visibleColumns.includes(col.value));
         }
     },
     mounted() {
+        this.$root.$on('load-clicks-log', this.loadData);
         this.loadFilterOptions();
         this.loadData();
-        this.$root.$on('load-clicks-log', this.loadData);
     },
     methods: {
-        async loadFilterOptions() {
-            try {
-                const res = await fetch('/backend/api/reports/filter-options');
-                this.filterOptions = await res.json();
-            } catch (err) {
-                console.error('Error loading filter options:', err);
-            }
-        },
         async loadData() {
             this.loading = true;
             try {
                 const params = new URLSearchParams();
-                
-                if (this.filters.dateRange[0]) params.append('date_from', this.filters.dateRange[0]);
-                if (this.filters.dateRange[1]) params.append('date_to', this.filters.dateRange[1]);
                 if (this.filters.click_id) params.append('click_id', this.filters.click_id);
-                if (this.filters.campaign_id) params.append('campaign_id', this.filters.campaign_id);
-                if (this.filters.offer_id) params.append('offer_id', this.filters.offer_id);
+                if (this.filters.campaign) params.append('campaign', this.filters.campaign);
                 if (this.filters.country) params.append('country', this.filters.country);
-                if (this.filters.device_type) params.append('device_type', this.filters.device_type);
-                if (this.filters.os) params.append('os', this.filters.os);
-                if (this.filters.ip) params.append('ip', this.filters.ip);
-                if (this.filters.visitor_id) params.append('visitor_id', this.filters.visitor_id);
-                if (this.filters.sub_id_1) params.append('sub_id_1', this.filters.sub_id_1);
-                if (this.filters.is_bot) params.append('is_bot', 'true');
-                
-                params.append('limit', this.tableOptions.itemsPerPage);
-                params.append('offset', (this.tableOptions.page - 1) * this.tableOptions.itemsPerPage);
+                if (this.filters.date_from) params.append('date_from', this.filters.date_from);
+                if (this.filters.date_to) params.append('date_to', this.filters.date_to);
+                params.append('limit', this.options.itemsPerPage);
+                params.append('offset', (this.options.page - 1) * this.options.itemsPerPage);
 
-                const res = await fetch(`/backend/api/reports/clicks-log-full?${params}`);
-                const data = await res.json();
-                
-                this.clicks = data.items || [];
-                this.total = data.total || 0;
-            } catch (err) {
-                console.error('Error loading clicks log:', err);
-                this.$root.$emit('show-message', { type: 'error', text: 'Failed to load clicks log' });
+                const response = await fetch(`/backend/api/reports/clicks-log-full?${params}`);
+                const data = await response.json();
+                this.items = data.items;
+                this.total = data.total;
+            } catch (error) {
+                console.error('Error loading clicks:', error);
             } finally {
                 this.loading = false;
             }
         },
-        onTableUpdate(options) {
+        async loadFilterOptions() {
+            try {
+                const response = await fetch('/backend/api/reports/filter-options');
+                const data = await response.json();
+                this.countries = data.countries;
+            } catch (error) {
+                console.error('Error loading filter options:', error);
+            }
+        },
+        onOptionsUpdate() {
             this.loadData();
         },
-        clearFilters() {
+        resetFilters() {
             this.filters = {
-                dateRange: [
-                    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
-                    new Date().toISOString().split('T')[0]
-                ],
                 click_id: '',
-                campaign_id: null,
-                offer_id: null,
-                country: null,
-                device_type: null,
-                os: null,
-                ip: '',
-                visitor_id: '',
-                sub_id_1: '',
-                is_bot: false
+                campaign: '',
+                country: '',
+                date_from: null,
+                date_to: null
             };
             this.loadData();
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString();
         },
         getStatusColor(status) {
             const colors = {
                 'lead': 'blue',
-                'sale': 'success',
-                'upsale': 'purple',
-                'rejected': 'error',
-                'hold': 'warning',
+                'sale': 'green',
+                'upsale': 'teal',
+                'rejected': 'red',
+                'hold': 'orange',
                 'trash': 'grey'
             };
             return colors[status] || 'grey';
         },
-        formatDate(dateStr) {
-            if (!dateStr) return '—';
-            const d = new Date(dateStr);
-            return d.toLocaleString('ru-RU', { 
-                day: '2-digit', 
-                month: '2-digit', 
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-        },
         copyToClipboard(text) {
             navigator.clipboard.writeText(text);
-            this.snackbar = true;
+            this.snackbar = { show: true, text: 'Copied!', color: 'success' };
         },
-        exportCSV() {
-            const headers = this.visibleHeaders.map(h => h.text).join(',');
-            const rows = this.clicks.map(row => 
-                this.selectedColumns.map(col => `"${row[col] || ''}"`).join(',')
-            ).join('\n');
-            
-            const csv = headers + '\n' + rows;
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `clicks_log_${new Date().toISOString().split('T')[0]}.csv`;
-            link.click();
+        selectAllColumns() {
+            this.visibleColumns = this.allColumns.map(c => c.value);
+        },
+        async exportCSV() {
+            this.loading = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.filters.click_id) params.append('click_id', this.filters.click_id);
+                if (this.filters.campaign) params.append('campaign', this.filters.campaign);
+                if (this.filters.country) params.append('country', this.filters.country);
+                if (this.filters.date_from) params.append('date_from', this.filters.date_from);
+                if (this.filters.date_to) params.append('date_to', this.filters.date_to);
+                params.append('limit', 10000);
+                params.append('offset', 0);
+
+                const response = await fetch(`/backend/api/reports/clicks-log-full?${params}`);
+                const data = await response.json();
+                
+                // Convert to CSV
+                const headers = this.visibleColumns;
+                const headerLabels = this.tableHeaders.map(h => h.text);
+                let csv = headerLabels.join(',') + '\n';
+                
+                data.items.forEach(item => {
+                    const row = headers.map(h => {
+                        const val = item[h];
+                        if (val === null || val === undefined) return '';
+                        return `"${String(val).replace(/"/g, '""')}"`;
+                    });
+                    csv += row.join(',') + '\n';
+                });
+                
+                // Download
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `clicks_log_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                this.snackbar = { show: true, text: 'Export completed!', color: 'success' };
+            } catch (error) {
+                console.error('Error exporting:', error);
+                this.snackbar = { show: true, text: 'Export failed', color: 'error' };
+            } finally {
+                this.loading = false;
+            }
         }
     }
 });

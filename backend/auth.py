@@ -94,14 +94,18 @@ def is_authenticated(request: Request) -> any:
 # ====== POST /login ======
 @router.post("/login")
 async def login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):
+    print(f"[LOGIN DEBUG] username='{login_data.username}', password='{login_data.password}'")
     user = get_user(db, login_data.username)
     if not user:
+        print(f"[LOGIN DEBUG] User not found: {login_data.username}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Хешируем пароль как "akm" + password
     hashed_password = md5((pass_salt + login_data.password).encode()).hexdigest()
+    print(f"[LOGIN DEBUG] expected_hash='{user.password_hash}', got_hash='{hashed_password}'")
 
     if user.password_hash != hashed_password:
+        print(f"[LOGIN DEBUG] Password mismatch!")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials 2")
 
     # Генерируем токен

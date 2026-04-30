@@ -1,0 +1,41 @@
+                                          Представление "public.clicks_daily_stats"
+      Столбец      |           Тип            | Правило сортировки | Допустимость NULL | По умолчанию | Хранилище | Описание 
+-------------------+--------------------------+--------------------+-------------------+--------------+-----------+----------
+ id                | integer                  |                    |                   |              | plain     | 
+ date              | date                     |                    |                   |              | plain     | 
+ campaign_id       | integer                  |                    |                   |              | plain     | 
+ offer_id          | integer                  |                    |                   |              | plain     | 
+ landing_id        | integer                  |                    |                   |              | plain     | 
+ traffic_source_id | integer                  |                    |                   |              | plain     | 
+ country           | character varying(50)    |                    |                   |              | extended  | 
+ clicks            | bigint                   |                    |                   |              | plain     | 
+ unique_clicks     | bigint                   |                    |                   |              | plain     | 
+ conversions       | bigint                   |                    |                   |              | plain     | 
+ leads             | bigint                   |                    |                   |              | plain     | 
+ sales             | bigint                   |                    |                   |              | plain     | 
+ cost              | real                     |                    |                   |              | plain     | 
+ revenue           | real                     |                    |                   |              | plain     | 
+ profit            | real                     |                    |                   |              | plain     | 
+ created_at        | timestamp with time zone |                    |                   |              | plain     | 
+ updated_at        | timestamp with time zone |                    |                   |              | plain     | 
+Определение представления:
+ SELECT row_number() OVER ()::integer AS id,
+    received_at::date AS date,
+    campaign_id,
+    offer_id,
+    landing_id,
+    NULL::integer AS traffic_source_id,
+    country,
+    count(*) AS clicks,
+    count(DISTINCT visitor_id) AS unique_clicks,
+    count(*) FILTER (WHERE status = ANY (ARRAY['sale'::conversion_status, 'upsale'::conversion_status, 'lead'::conversion_status])) AS conversions,
+    count(*) FILTER (WHERE status = 'lead'::conversion_status) AS leads,
+    count(*) FILTER (WHERE status = ANY (ARRAY['sale'::conversion_status, 'upsale'::conversion_status])) AS sales,
+    COALESCE(sum(cost), 0::real) AS cost,
+    COALESCE(sum(payout), 0::real) AS revenue,
+    COALESCE(sum(payout), 0::real) - COALESCE(sum(cost), 0::real) AS profit,
+    min(received_at)::timestamp with time zone AS created_at,
+    max(received_at)::timestamp with time zone AS updated_at
+   FROM conversions_data
+  GROUP BY (received_at::date), campaign_id, offer_id, landing_id, country;
+
