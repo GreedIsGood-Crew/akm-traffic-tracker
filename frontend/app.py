@@ -535,10 +535,39 @@ async def do_campaign_execution(campaign, request: Request) -> Response:
 
         # SCHEMA: direct
         if schema == "direct":
-            offer_url = get_real_offer_url(flow.get("offer"))
-            # TODO: save_click_to_db
-            # await save_click_info(flow.get("campaign_id"), flow.get("offer"), request)
-            return RedirectResponse(offer_url)
+            offer_id = flow.get("offer")
+            
+            # Получаем оффер из БД
+            async with pg.acquire() as conn:
+                offer = await conn.fetchrow("SELECT * FROM offers WHERE id = $1", offer_id)
+            
+            if not offer:
+                log_track(f"❌ Offer {offer_id} not found for direct schema")
+                return render_404_html()
+            
+            # Генерируем click_id и добавляем обязательные поля
+            meta_data["click_id"] = meta_data.get("click_id") or generate_click_id()
+            meta_data["campaign_id"] = campaign["id"]
+            meta_data["offer_id"] = offer_id
+            
+            # Сохраняем клик асинхронно (fire and forget)
+            asyncio.create_task(save_click_to_db(meta_data.copy()))
+            
+            # Формируем URL оффера с подстановкой плейсхолдеров
+            offer_url = offer["url"]
+            for key, value in meta_data.items():
+                placeholder = f"{{{key}}}"
+                if placeholder in offer_url:
+                    offer_url = offer_url.replace(placeholder, str(value))
+            
+            # Добавляем click_id в query params для postback
+            parsed = urlparse(offer_url)
+            query_params = dict(parse_qsl(parsed.query))
+            query_params["click_id"] = meta_data["click_id"]
+            offer_url = urlunparse(parsed._replace(query=urlencode(query_params)))
+            
+            log_track(f"✅ Direct redirect to: {offer_url[:100]}...")
+            return RedirectResponse(offer_url, status_code=302)
 
 
         # SCHEMA: landing → offer
