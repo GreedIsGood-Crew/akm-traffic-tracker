@@ -21,7 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 
-# from clickhouse_connect import get_client  # DISABLED: Postgres-only
+# # from clickhouse_connect import get_client  # DISABLED: Variant C  # DISABLED: Postgres-only
 from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
 
 import uuid
@@ -400,13 +400,16 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
     if exc.status_code in (404, 405):
         host = request.headers.get("host", "").lower().strip()
         if host:
-            pg = app.state.pg
-            async with pg.acquire() as conn:
-                row = await conn.fetchrow("SELECT * FROM domains WHERE domain = $1", host)
-                log_track(f"🔁 domain '{row}'")
-                if row and row['handle_404'] == 'handle':
-                    log_track('HANDLE 404')
-                    return await domain_page_default_campaign(request)
+            try:
+                pg = app.state.pg
+                async with pg.acquire() as conn:
+                    row = await conn.fetchrow("SELECT * FROM domains WHERE domain = $1", host)
+                    log_track(f"🔁 domain '{row}'")
+                    if row and row['handle_404'] == 'handle':
+                        log_track('HANDLE 404')
+                        return await domain_page_default_campaign(request)
+            except Exception:
+                pass
 
         return render_404_html()
     # other errors by default
@@ -683,7 +686,7 @@ async def track_event(campaign, request: Request):
         log_track(msg)
         raise HTTPException(status_code=400, detail=msg)
 
-    # ch = request.app.state.ch  # DISABLED: Postgres-only
+    # # ch = request.app.state.ch  # DISABLED: Variant C  # DISABLED: Postgres-only
 
     content_type = request.headers.get('content-type', '')
     if content_type.startswith('application/x-www-form-urlencoded'):
