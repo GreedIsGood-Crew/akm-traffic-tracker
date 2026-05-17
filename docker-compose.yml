@@ -88,6 +88,7 @@ services:
       - DB_NAME=tracker
       - DB_USER=riseflow
       - DB_PASSWORD=2e5deb5ca8c4a4c1392320089305026f1067a8c3
+      - TRACKER_JWT_SECRET=${TRACKER_JWT_SECRET:?TRACKER_JWT_SECRET is required}
     volumes:
       - ./backend:/app
       - ./certbot-var:/var/www/certbot

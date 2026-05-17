@@ -1,25 +1,57 @@
 # app_pages/auth.py
+import os
+import logging
+
 from fastapi import APIRouter, Request, Response, HTTPException, status, Depends
 from pydantic import BaseModel
 
 from sqlalchemy.orm import Session
-from fastapi import Request
 from jose import jwt, JWTError
-from typing import Optional
+from passlib.context import CryptContext
 from hashlib import md5
 from db import get_db, get_user, SessionLocal
-from hashlib import md5
 from datetime import datetime, timedelta
 
 from models.user import UserORM
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
-# Конфигурация JWT
-SECRET_KEY = "your-super-secret-key-for-jwt"
+# Конфигурация JWT — секрет ТОЛЬКО из environment
+SECRET_KEY = os.environ.get("TRACKER_JWT_SECRET")
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError("TRACKER_JWT_SECRET env var is required (min 32 chars)")
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 2400
-pass_salt = 'akm_'
+ACCESS_TOKEN_EXPIRE_HOURS = 24
+
+# bcrypt для хеширования паролей (с поддержкой миграции с MD5)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_LEGACY_SALT = "akm_"
+
+
+def verify_password(plain_password: str, hashed_password: str, db: Session = None, user: UserORM = None) -> bool:
+    """Verify password. Supports migration from legacy MD5 to bcrypt."""
+    # Try bcrypt first
+    if pwd_context.identify(hashed_password):
+        return pwd_context.verify(plain_password, hashed_password)
+
+    # Fallback: legacy MD5 verification for migration
+    legacy_hash = md5((_LEGACY_SALT + plain_password).encode()).hexdigest()
+    if hashed_password == legacy_hash:
+        # Auto-migrate to bcrypt on successful login
+        if db and user:
+            user.password_hash = pwd_context.hash(plain_password)
+            db.commit()
+            logger.info("Migrated user %s from MD5 to bcrypt", user.username)
+        return True
+
+    return False
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
 
 
 # Генерация токена
@@ -35,23 +67,6 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-# Секретный ключ для подписи токенов
-SECRET_KEY = "your-super-secret-key"
-ALGORITHM = "HS256"
-
-# Фейковая база пользователей
-fake_users_db = {
-    "admin": {
-        "username": "admin",
-        "password_hash": md5("akm_admin".encode()).hexdigest()
-    },
-    "user1": {
-        "username": "user1",
-        "password_hash": md5("akm_user".encode()).hexdigest()
-    }
-}
 
 
 # ====== Проверка авторизации ======
@@ -94,19 +109,14 @@ def is_authenticated(request: Request) -> any:
 # ====== POST /login ======
 @router.post("/login")
 async def login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):
-    print(f"[LOGIN DEBUG] username='{login_data.username}', password='{login_data.password}'")
     user = get_user(db, login_data.username)
     if not user:
-        print(f"[LOGIN DEBUG] User not found: {login_data.username}")
+        logger.info("Login failed: user not found: %s", login_data.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    # Хешируем пароль как "akm" + password
-    hashed_password = md5((pass_salt + login_data.password).encode()).hexdigest()
-    print(f"[LOGIN DEBUG] expected_hash='{user.password_hash}', got_hash='{hashed_password}'")
-
-    if user.password_hash != hashed_password:
-        print(f"[LOGIN DEBUG] Password mismatch!")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials 2")
+    if not verify_password(login_data.password, user.password_hash, db=db, user=user):
+        logger.info("Login failed: invalid password for user: %s", login_data.username)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Генерируем токен
     token_data = {"sub": user.username}
@@ -115,6 +125,7 @@ async def login(request: Request, response: Response, login_data: LoginRequest, 
     # Сохраняем токен в куках
     response.set_cookie(key="session_token", value=token, httponly=True)
 
+    logger.info("Login successful: %s", login_data.username)
     return {"message": "Login successful"}
 
 

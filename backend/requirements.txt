@@ -5,6 +5,7 @@ jinja2
 python-jose[cryptography]
 sqlalchemy
 python-multipart
+passlib[bcrypt]
 pydantic[email]
 httpx
 # ── test deps ──────────────────────────────────────────────────────────────
